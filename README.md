@@ -1,3 +1,5 @@
+# WORK IN PROGRESS
+
 # codemirror-typst-linter
 
 A CodeMirror 6 extension that shows Typst diagnostics as you type, using [@myriaddreamin/typst.ts](https://github.com/Myriad-Dreamin/typst.ts) for compilation in a Web Worker.
