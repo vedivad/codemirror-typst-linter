@@ -30,6 +30,11 @@ export interface TypstLinterOptions {
   delay?: number;
   /** Include diagnostics from imported packages, not just the main file. Default: false. */
   includePackageDiagnostics?: boolean;
+  /**
+   * Optional Web Worker instance to use for compilation.
+   * If not provided, the linter will attempt to load the worker via import.meta.url.
+   */
+  worker?: Worker;
 }
 
 function parseRange(range: string): [number, number, number, number] {
@@ -116,9 +121,10 @@ class TypstWorkerPlugin {
       fonts: string[];
       wasmUrl: string;
       includePackageDiagnostics: boolean;
+      worker?: Worker;
     },
   ) {
-    this.worker = createWorker();
+    this.worker = options.worker || createWorker();
 
     this.ready = workerRpc(
       this.worker,
@@ -186,9 +192,16 @@ export function typstLinter(options: TypstLinterOptions = {}): Extension {
   const wasmUrl = options.wasmUrl ?? DEFAULT_WASM_URL;
   const delay = options.delay ?? 0;
   const includePackageDiagnostics = options.includePackageDiagnostics ?? false;
+  const worker = options.worker;
 
   const workerPlugin = ViewPlugin.define(
-    () => new TypstWorkerPlugin({ fonts, wasmUrl, includePackageDiagnostics }),
+    () =>
+      new TypstWorkerPlugin({
+        fonts,
+        wasmUrl,
+        includePackageDiagnostics,
+        worker,
+      }),
     {},
   );
 
