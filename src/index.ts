@@ -93,14 +93,12 @@ class TypstWorkerPlugin {
   private ready: Promise<void>;
   private idCounter = 0;
   private latestId = 0;
-  private includePackageDiagnostics: boolean;
 
   constructor(private options: {
     fonts: string[];
     wasmUrl: string;
     includePackageDiagnostics: boolean;
   }) {
-    this.includePackageDiagnostics = options.includePackageDiagnostics;
     this.worker = createWorker();
 
     this.ready = workerRpc(
@@ -138,13 +136,14 @@ class TypstWorkerPlugin {
     }
 
     return response.diagnostics
-      .filter(d => this.includePackageDiagnostics || d.package === '')
+      .filter(d => this.options.includePackageDiagnostics || d.package === '')
       .map(d => toCMDiagnostic(view.state, d));
   }
 
   destroy() {
     const id = ++this.idCounter;
     workerRpc(this.worker, { type: 'destroy', id }, 5_000)
+      .catch(() => {/* worker may already be unresponsive */})
       .finally(() => this.worker.terminate());
   }
 }
