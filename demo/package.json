@@ -15,7 +15,7 @@
     "@codemirror/theme-one-dark": "^6.1.2",
     "codemirror": "^6.0.2",
     "codemirror-lang-typst": "^0.4.0",
-    "codemirror-typst-linter": "^0.1.8",
+    "codemirror-typst-linter": "^0.1.92",
     "svelte": "^5.0.0"
   },
   "devDependencies": {
