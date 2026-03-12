@@ -5,7 +5,7 @@ import { TypstWorkerPlugin } from "./plugin.js";
 import { TypstService, createTypstService } from "./service.js";
 
 export { TypstService, createTypstService };
-export type { TypstServiceOptions } from "./service.js";
+export type { TypstServiceOptions, CompileResult } from "./service.js";
 
 export interface TypstLinterOptions {
   /** Delay in ms before linting fires after a document change. Default: 0. */
@@ -14,6 +14,8 @@ export interface TypstLinterOptions {
   includePackageDiagnostics?: boolean;
   /** Called after each lint pass with the resulting diagnostics. */
   onDiagnostics?: (diagnostics: Diagnostic[]) => void;
+  /** Called after each compile with the incremental vector bytes for SVG rendering. */
+  onVector?: (vector: Uint8Array) => void;
 }
 
 export function typstLinter(
@@ -23,6 +25,7 @@ export function typstLinter(
   const delay = options.delay ?? 0;
   const includePackageDiagnostics = options.includePackageDiagnostics ?? false;
   const onDiagnostics = options.onDiagnostics;
+  const onVector = options.onVector;
 
   const workerPlugin = ViewPlugin.define(
     () =>
@@ -30,6 +33,7 @@ export function typstLinter(
         service,
         includePackageDiagnostics,
         onDiagnostics,
+        onVector,
       }),
     {},
   );

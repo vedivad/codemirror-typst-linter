@@ -18,18 +18,10 @@ import type {
   DiagnosticMessage,
 } from "./types.js";
 
-interface IncrementalServer {
-  reset(): void;
-  current(): Uint8Array | undefined;
-  setAttachDebugInfo(enable: boolean): void;
-}
-
 const accessModel = new MemoryAccessModel();
 const packageRegistry = new FetchPackageRegistry(accessModel);
 
 let compiler: TypstCompiler | null = null;
-let incrServer: IncrementalServer | null = null;
-let shutdownResolve: (() => void) | null = null;
 
 async function initCompiler(
   wasmUrl: string,
@@ -44,34 +36,22 @@ async function initCompiler(
       ...(packages ? [withAccessModel(accessModel), withPackageRegistry(packageRegistry)] : []),
     ],
   });
-
-  // Keep the IncrementalServer alive for the lifetime of this worker
-  const serverReady = new Promise<IncrementalServer>((resolve) => {
-    const shutdownSignal = new Promise<void>((r) => {
-      shutdownResolve = r;
-    });
-
-    compiler!.withIncrementalServer(async (server) => {
-      resolve(server);
-      await shutdownSignal;
-    });
-  });
-
-  incrServer = await serverReady;
 }
 
-async function compile(source: string): Promise<DiagnosticMessage[]> {
-  if (!compiler || !incrServer) throw new Error("Compiler not initialized");
+async function compile(source: string): Promise<{ diagnostics: DiagnosticMessage[]; vector?: Uint8Array }> {
+  if (!compiler) throw new Error("Compiler not initialized");
 
   compiler.addSource("/main.typ", source);
 
   const result = await compiler.compile({
     mainFilePath: "/main.typ",
-    incrementalServer: incrServer,
     diagnostics: "full",
   });
 
-  return result.diagnostics ?? [];
+  return {
+    diagnostics: result.diagnostics ?? [],
+    vector: result.result ?? undefined,
+  };
 }
 
 self.onmessage = async (e: MessageEvent<WorkerRequest>) => {
@@ -93,12 +73,16 @@ self.onmessage = async (e: MessageEvent<WorkerRequest>) => {
 
   if (req.type === "compile") {
     try {
-      const diagnostics = await compile(req.source);
-      self.postMessage({
-        type: "result",
-        id: req.id,
-        diagnostics,
-      } satisfies WorkerResponse);
+      const { diagnostics, vector: vectorData } = await compile(req.source);
+      const vector = vectorData
+        ? vectorData.buffer.slice(vectorData.byteOffset, vectorData.byteOffset + vectorData.byteLength)
+        : undefined;
+      const msg: WorkerResponse = { type: "result", id: req.id, diagnostics, vector };
+      if (vector) {
+        self.postMessage(msg, [vector]);
+      } else {
+        self.postMessage(msg);
+      }
     } catch (err) {
       self.postMessage({
         type: "error",
@@ -132,7 +116,6 @@ self.onmessage = async (e: MessageEvent<WorkerRequest>) => {
   }
 
   if (req.type === "destroy") {
-    shutdownResolve?.();
     self.postMessage({ type: "ready", id: req.id } satisfies WorkerResponse);
   }
 };

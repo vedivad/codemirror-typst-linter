@@ -1,6 +1,12 @@
 import type { DiagnosticMessage } from "./types.js";
 import { createWorker, workerRpc } from "./rpc.js";
 
+export interface CompileResult {
+  diagnostics: DiagnosticMessage[];
+  /** Incremental vector bytes from the compiler (for SVG rendering). */
+  vector?: Uint8Array;
+}
+
 export interface TypstServiceOptions {
   /**
    * URL to the typst-ts-web-compiler WASM binary.
@@ -58,7 +64,7 @@ export class TypstService {
     });
   }
 
-  async compile(source: string): Promise<DiagnosticMessage[]> {
+  async compile(source: string): Promise<CompileResult> {
     await this.ready;
     const id = ++this.idCounter;
     const response = await workerRpc(this.worker, {
@@ -66,9 +72,14 @@ export class TypstService {
       id,
       source,
     });
-    if (response.type === "result") return response.diagnostics;
+    if (response.type === "result") {
+      return {
+        diagnostics: response.diagnostics,
+        vector: response.vector ? new Uint8Array(response.vector) : undefined,
+      };
+    }
     if (response.type === "error") throw new Error(response.message);
-    return [];
+    return { diagnostics: [] };
   }
 
   async renderPdf(source: string): Promise<Uint8Array> {

@@ -5,6 +5,8 @@
   import PreviewPanel from './PreviewPanel.svelte';
   import { TypstService } from 'codemirror-typst-linter';
   import type { Diagnostic } from '@codemirror/lint';
+  import initRenderer, { TypstRendererBuilder, type TypstRenderer } from '@myriaddreamin/typst-ts-renderer';
+  import rendererWasmUrl from '@myriaddreamin/typst-ts-renderer/pkg/typst_ts_renderer_bg.wasm?url';
 
   const initialDoc = `\
 // Package imports are fetched on demand from packages.typst.org.
@@ -21,44 +23,42 @@
 `;
 
   let diagnostics = $state<Diagnostic[]>([]);
-  let pdfUrl = $state<string | null>(null);
+  let svgContent = $state<string | null>(null);
   let renderError = $state<string | null>(null);
   let ready = $state(false);
   let service: TypstService | null = null;
+  let renderer: TypstRenderer | null = null;
 
-  let renderTimer: ReturnType<typeof setTimeout> | null = null;
-  let currentPdfUrl: string | null = null;
-
-  onMount(() => {
+  onMount(async () => {
     const s = new TypstService(
       new Worker(new URL('codemirror-typst-linter/worker', import.meta.url), { type: 'module' }),
     );
     service = s;
+
+    try {
+      await initRenderer(rendererWasmUrl);
+      const builder = new TypstRendererBuilder();
+      renderer = await builder.build();
+    } catch (err) {
+      renderError = err instanceof Error ? err.message : String(err);
+    }
+
     ready = true;
-    scheduleRender(initialDoc);
-    return () => {
-      s.destroy();
-      if (currentPdfUrl) URL.revokeObjectURL(currentPdfUrl);
-    };
+
+    return () => { s.destroy(); };
   });
 
-  function scheduleRender(source: string) {
-    if (renderTimer) clearTimeout(renderTimer);
-    renderTimer = setTimeout(() => render(source), 500);
-  }
-
-  async function render(source: string) {
-    if (!service) return;
+  function applyVector(vector: Uint8Array) {
+    if (!renderer) return;
+    const session = renderer.create_session();
     try {
-      const pdf = await service.renderPdf(source);
-      const blob = new Blob([pdf], { type: 'application/pdf' });
-      const url = URL.createObjectURL(blob);
-      if (currentPdfUrl) URL.revokeObjectURL(currentPdfUrl);
-      currentPdfUrl = url;
-      pdfUrl = url;
+      renderer.manipulate_data(session, 'reset', vector);
+      svgContent = renderer.svg_data(session);
       renderError = null;
     } catch (err) {
       renderError = err instanceof Error ? err.message : String(err);
+    } finally {
+      session.free();
     }
   }
 </script>
@@ -74,11 +74,11 @@
         {initialDoc}
         {service}
         onDiagnostics={(d) => { diagnostics = d; }}
-        onSourceChange={(src) => scheduleRender(src)}
+        onVector={applyVector}
       />
     {/if}
     <DiagnosticsPanel {diagnostics} />
-    <PreviewPanel {pdfUrl} error={renderError} />
+    <PreviewPanel {svgContent} error={renderError} />
   </div>
 </div>
 

@@ -11,10 +11,10 @@
     initialDoc: string;
     service: TypstService;
     onDiagnostics: (diagnostics: Diagnostic[]) => void;
-    onSourceChange: (source: string) => void;
+    onVector: (vector: Uint8Array) => void;
   }
 
-  let { initialDoc, service, onDiagnostics, onSourceChange }: Props = $props();
+  let { initialDoc, service, onDiagnostics, onVector }: Props = $props();
 
   let container: HTMLDivElement;
 
@@ -26,10 +26,7 @@
           basicSetup,
           oneDark,
           typst(),
-          typstLinter(service, { includePackageDiagnostics: true, onDiagnostics }),
-          EditorView.updateListener.of((update) => {
-            if (update.docChanged) onSourceChange(update.state.doc.toString());
-          }),
+          typstLinter(service, { includePackageDiagnostics: true, onDiagnostics, onVector }),
         ],
       }),
       parent: container,

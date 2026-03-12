@@ -11,8 +11,9 @@
   "dependencies": {
     "@codemirror/lint": "^6.9.5",
     "@codemirror/state": "^6.5.4",
-    "@codemirror/view": "^6.39.16",
     "@codemirror/theme-one-dark": "^6.1.2",
+    "@codemirror/view": "^6.39.16",
+    "@myriaddreamin/typst-ts-renderer": "0.7.0-rc2",
     "codemirror": "^6.0.2",
     "codemirror-lang-typst": "^0.4.0",
     "codemirror-typst-linter": "file:..",

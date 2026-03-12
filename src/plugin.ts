@@ -7,6 +7,7 @@ export interface PluginOptions {
   service: TypstService;
   includePackageDiagnostics: boolean;
   onDiagnostics?: (diagnostics: Diagnostic[]) => void;
+  onVector?: (vector: Uint8Array) => void;
 }
 
 export class TypstWorkerPlugin {
@@ -21,11 +22,13 @@ export class TypstWorkerPlugin {
     let diagnostics: Diagnostic[];
 
     try {
-      const raw = await this.options.service.compile(source);
+      const result = await this.options.service.compile(source);
 
       if (mySeq !== this.seq) return [];
 
-      diagnostics = raw
+      if (result.vector) this.options.onVector?.(result.vector);
+
+      diagnostics = result.diagnostics
         .filter(
           (d) => this.options.includePackageDiagnostics || d.package === "",
         )

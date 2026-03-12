@@ -1,17 +1,17 @@
 <script lang="ts">
   interface Props {
-    pdfUrl: string | null;
+    svgContent: string | null;
     error: string | null;
   }
 
-  let { pdfUrl, error }: Props = $props();
+  let { svgContent, error }: Props = $props();
 </script>
 
 <div class="preview">
   {#if error}
     <div class="error">{error}</div>
-  {:else if pdfUrl}
-    <iframe src={pdfUrl} title="Typst preview"></iframe>
+  {:else if svgContent}
+    <div class="svg-container">{@html svgContent}</div>
   {:else}
     <div class="placeholder">Rendering…</div>
   {/if}
@@ -27,11 +27,18 @@
     background: #fff;
   }
 
-  iframe {
+  .svg-container {
     flex: 1;
-    border: none;
-    width: 100%;
-    height: 100%;
+    overflow: auto;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 1rem;
+  }
+
+  :global(.svg-container svg) {
+    max-width: 100%;
+    height: auto;
   }
 
   .error {
