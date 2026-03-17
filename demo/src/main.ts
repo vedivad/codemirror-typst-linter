@@ -6,9 +6,11 @@ const diagnosticsEl = document.getElementById('diagnostics')!;
 const previewEl = document.getElementById('preview')!;
 
 createEditor(editorEl, {
-  renderer: () => import('@myriaddreamin/typst-ts-renderer'),
-  onSvg: (svg) => {
-    previewEl.innerHTML = `<div class="svg-container">${svg}</div>`;
+  renderer: {
+    module: () => import('@myriaddreamin/typst-ts-renderer'),
+    onSvg: (svg) => {
+      previewEl.innerHTML = `<div class="svg-container">${svg}</div>`;
+    },
   },
   onDiagnostics: (d) => updateDiagnostics(diagnosticsEl, d),
 });

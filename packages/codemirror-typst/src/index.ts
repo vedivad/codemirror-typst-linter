@@ -6,7 +6,7 @@ import { TypstService, createTypstService } from "typst-web-service";
 import type { TypstServiceOptions } from "typst-web-service";
 
 export { TypstService, createTypstService };
-export type { TypstServiceOptions, CompileResult } from "typst-web-service";
+export type { TypstServiceOptions, RendererOptions, CompileResult } from "typst-web-service";
 
 export interface TypstLinterOptions extends TypstServiceOptions {
   /**

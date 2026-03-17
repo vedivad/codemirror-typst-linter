@@ -10,9 +10,6 @@ export interface CompileResult {
 /**
  * A dynamic `import()` expression that resolves to the `@myriaddreamin/typst-ts-renderer` module.
  * Keeps the renderer dependency opt-in — users who only need diagnostics never load the WASM.
- *
- * Example:
- *   renderer: () => import('@myriaddreamin/typst-ts-renderer')
  */
 export type RendererModule = () => Promise<{
   default: (wasmUrl?: string) => Promise<unknown>;
@@ -33,6 +30,19 @@ export interface RendererSession {
   free(): void;
 }
 
+/** Options for the opt-in SVG renderer. */
+export interface RendererOptions {
+  /**
+   * Dynamic import for the renderer module.
+   * Example: () => import('@myriaddreamin/typst-ts-renderer')
+   */
+  module: RendererModule;
+  /** URL to the typst-ts-renderer WASM binary. Defaults to jsDelivr CDN. */
+  wasmUrl?: string;
+  /** Called after each compile with the rendered SVG string. */
+  onSvg: (svg: string) => void;
+}
+
 export interface TypstServiceOptions {
   /**
    * URL to the typst-ts-web-compiler WASM binary.
@@ -51,18 +61,16 @@ export interface TypstServiceOptions {
   /** Called after each compile with the vector artifact bytes, usable with typst-ts-renderer for SVG rendering. */
   onVector?: (vector: Uint8Array) => void;
   /**
-   * Opt-in SVG preview: pass a dynamic import for the renderer module.
-   * When set, the service initializes the renderer lazily and calls `onSvg`
-   * after each successful compile.
+   * Opt-in SVG preview. When set, the renderer is initialized lazily and `onSvg`
+   * is called after each successful compile.
    *
    * Example:
-   *   renderer: () => import('@myriaddreamin/typst-ts-renderer')
+   *   renderer: {
+   *     module: () => import('@myriaddreamin/typst-ts-renderer'),
+   *     onSvg: (svg) => { previewEl.innerHTML = svg },
+   *   }
    */
-  renderer?: RendererModule;
-  /** URL to the typst-ts-renderer WASM binary. Only used when `renderer` is set. Defaults to jsDelivr CDN. */
-  rendererWasmUrl?: string;
-  /** Called after each compile with the rendered SVG string. Requires `renderer` to be set. */
-  onSvg?: (svg: string) => void;
+  renderer?: RendererOptions;
 }
 
 const DEFAULT_FONTS = [
@@ -102,10 +110,10 @@ export class TypstService {
     options: TypstServiceOptions = {},
   ) {
     this.onVector = options.onVector;
-    this.onSvg = options.onSvg;
+    this.onSvg = options.renderer?.onSvg;
 
     if (options.renderer) {
-      this.rendererInstance = this.#initRenderer(options.renderer, options.rendererWasmUrl);
+      this.rendererInstance = this.#initRenderer(options.renderer.module, options.renderer.wasmUrl);
       this.rendererReady = this.rendererInstance.then(() => {});
     }
 
