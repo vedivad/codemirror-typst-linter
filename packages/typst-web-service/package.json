@@ -25,6 +25,14 @@
     "@myriaddreamin/typst.ts": "^0.7.0-rc2",
     "@myriaddreamin/typst-ts-web-compiler": "^0.7.0-rc2"
   },
+  "peerDependencies": {
+    "@myriaddreamin/typst-ts-renderer": "^0.7.0-rc2"
+  },
+  "peerDependenciesMeta": {
+    "@myriaddreamin/typst-ts-renderer": {
+      "optional": true
+    }
+  },
   "devDependencies": {
     "esbuild": "^0.27.3",
     "tsup": "^8.0.0",

@@ -7,16 +7,12 @@ export interface CompileResult {
   vector?: Uint8Array;
 }
 
-/**
- * A dynamic `import()` expression that resolves to the `@myriaddreamin/typst-ts-renderer` module.
- * Keeps the renderer dependency opt-in — users who only need diagnostics never load the WASM.
- */
-export type RendererModule = () => Promise<{
+type RendererModuleExports = {
   default: (wasmUrl?: string) => Promise<unknown>;
   TypstRendererBuilder: new () => {
     build(): Promise<RendererInstance>;
   };
-}>;
+};
 
 /** Minimal interface for the built TypstRenderer. */
 export interface RendererInstance {
@@ -32,11 +28,8 @@ export interface RendererSession {
 
 /** Options for the opt-in SVG renderer. */
 export interface RendererOptions {
-  /**
-   * Dynamic import for the renderer module.
-   * Example: () => import('@myriaddreamin/typst-ts-renderer')
-   */
-  module: RendererModule;
+  /** Dynamic import for the renderer module. Defaults to `() => import('@myriaddreamin/typst-ts-renderer')`. */
+  module?: () => Promise<RendererModuleExports>;
   /** URL to the typst-ts-renderer WASM binary. Defaults to jsDelivr CDN. */
   wasmUrl?: string;
   /** Called after each compile with the rendered SVG string. */
@@ -64,7 +57,6 @@ export interface TypstServiceOptions {
    *
    * Example:
    *   renderer: {
-   *     module: () => import('@myriaddreamin/typst-ts-renderer'),
    *     onSvg: (svg) => { previewEl.innerHTML = svg },
    *   }
    */
@@ -109,7 +101,10 @@ export class TypstService {
     this.onSvg = options.renderer?.onSvg;
 
     if (options.renderer) {
-      this.rendererInstance = this.#initRenderer(options.renderer.module, options.renderer.wasmUrl);
+      this.rendererInstance = this.#initRenderer(
+        options.renderer.module ?? (() => import("@myriaddreamin/typst-ts-renderer")),
+        options.renderer.wasmUrl,
+      );
       this.rendererReady = this.rendererInstance.then(() => {});
     }
 
@@ -130,7 +125,7 @@ export class TypstService {
   }
 
   async #initRenderer(
-    loadModule: RendererModule,
+    loadModule: () => Promise<RendererModuleExports>,
     wasmUrl?: string,
   ): Promise<RendererInstance> {
     const mod = await loadModule();

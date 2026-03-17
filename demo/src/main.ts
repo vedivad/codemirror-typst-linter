@@ -33,7 +33,6 @@ const typstExtensions = await createTypstExtensions({
   },
   compiler: {
     renderer: {
-      module: () => import('@myriaddreamin/typst-ts-renderer'),
       onSvg: (svg) => {
         previewEl.innerHTML = `<div class="svg-container">${svg}</div>`;
       },
