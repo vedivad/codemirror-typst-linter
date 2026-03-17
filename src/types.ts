@@ -16,5 +16,6 @@ export type WorkerResponse =
   | { type: "ready"; id: number }
   | { type: "result"; id: number; diagnostics: DiagnosticMessage[]; vector?: ArrayBuffer }
   | { type: "pdf"; id: number; data: ArrayBuffer }
+  | { type: "cancelled"; id: number }
   | { type: "destroyed"; id: number }
   | { type: "error"; id: number; message: string };

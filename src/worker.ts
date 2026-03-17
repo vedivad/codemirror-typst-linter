@@ -55,20 +55,33 @@ function transferBuffer(data: Uint8Array): ArrayBuffer {
   return (data.buffer as ArrayBuffer).slice(data.byteOffset, data.byteOffset + data.byteLength);
 }
 
-self.onmessage = async (e: MessageEvent<WorkerRequest>) => {
-  const req = e.data;
+// Yield to the event loop so queued messages get processed before we start work.
+const yieldToEventLoop = () => new Promise<void>((r) => setTimeout(r, 0));
 
-  if (req.type === "init") {
-    try {
-      await initCompiler(req.wasmUrl, req.fonts, req.packages);
-      self.postMessage({ type: "ready", id: req.id } satisfies WorkerResponse);
-    } catch (err) {
-      postError(req.id, err);
+// --- Compile coalescing ---
+// Fast typing queues multiple compile requests. Since WASM execution blocks
+// the worker thread, we coalesce: before starting a compile, yield to the
+// event loop. If a newer request arrived, skip the old one.
+
+type CompileRequest = Extract<WorkerRequest, { type: "compile" }>;
+type RenderRequest = Extract<WorkerRequest, { type: "render" }>;
+
+let pendingCompile: CompileRequest | null = null;
+let processingCompile = false;
+
+let pendingRender: RenderRequest | null = null;
+let processingRender = false;
+
+async function drainCompileQueue(): Promise<void> {
+  processingCompile = true;
+  while (pendingCompile) {
+    const req = pendingCompile;
+    pendingCompile = null;
+    await yieldToEventLoop();
+    if (pendingCompile) {
+      self.postMessage({ type: "cancelled", id: req.id } satisfies WorkerResponse);
+      continue;
     }
-    return;
-  }
-
-  if (req.type === "compile") {
     try {
       const { diagnostics, vector: vectorData } = await compile(req.source);
       const vector = vectorData ? transferBuffer(vectorData) : undefined;
@@ -77,10 +90,20 @@ self.onmessage = async (e: MessageEvent<WorkerRequest>) => {
     } catch (err) {
       postError(req.id, err);
     }
-    return;
   }
+  processingCompile = false;
+}
 
-  if (req.type === "render") {
+async function drainRenderQueue(): Promise<void> {
+  processingRender = true;
+  while (pendingRender) {
+    const req = pendingRender;
+    pendingRender = null;
+    await yieldToEventLoop();
+    if (pendingRender) {
+      self.postMessage({ type: "cancelled", id: req.id } satisfies WorkerResponse);
+      continue;
+    }
     try {
       if (!compiler) throw new Error("Compiler not initialized");
       compiler.addSource("/main.typ", req.source);
@@ -95,6 +118,32 @@ self.onmessage = async (e: MessageEvent<WorkerRequest>) => {
     } catch (err) {
       postError(req.id, err);
     }
+  }
+  processingRender = false;
+}
+
+self.onmessage = async (e: MessageEvent<WorkerRequest>) => {
+  const req = e.data;
+
+  if (req.type === "init") {
+    try {
+      await initCompiler(req.wasmUrl, req.fonts, req.packages);
+      self.postMessage({ type: "ready", id: req.id } satisfies WorkerResponse);
+    } catch (err) {
+      postError(req.id, err);
+    }
+    return;
+  }
+
+  if (req.type === "compile") {
+    pendingCompile = req;
+    if (!processingCompile) drainCompileQueue();
+    return;
+  }
+
+  if (req.type === "render") {
+    pendingRender = req;
+    if (!processingRender) drainRenderQueue();
     return;
   }
 

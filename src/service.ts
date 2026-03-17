@@ -72,6 +72,7 @@ export class TypstService {
       id,
       source,
     });
+    if (response.type === "cancelled") return { diagnostics: [] };
     if (response.type === "result") {
       return {
         diagnostics: response.diagnostics,
@@ -86,6 +87,7 @@ export class TypstService {
     await this.ready;
     const id = ++this.idCounter;
     const response = await workerRpc(this.worker, { type: "render", id, source }, 60_000);
+    if (response.type === "cancelled") throw new Error("Render cancelled");
     if (response.type === "pdf") return new Uint8Array(response.data);
     if (response.type === "error") throw new Error(response.message);
     throw new Error("Unexpected response type");
