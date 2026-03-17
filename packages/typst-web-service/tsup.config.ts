@@ -19,7 +19,6 @@ export default defineConfig([
     dts: true,
     sourcemap: true,
     clean: true,
-    external: ["@codemirror/lint", "@codemirror/state", "@codemirror/view"],
     define: { __WORKER_CODE__: JSON.stringify(workerCode) },
   },
   {

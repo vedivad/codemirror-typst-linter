@@ -1,7 +1,7 @@
 import type { Diagnostic } from "@codemirror/lint";
 import { EditorView } from "@codemirror/view";
 import { toCMDiagnostic } from "./diagnostics.js";
-import type { TypstService } from "./service.js";
+import type { TypstService } from "typst-web-service";
 
 export interface PluginOptions {
   service: TypstService;

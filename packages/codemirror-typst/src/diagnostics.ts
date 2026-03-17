@@ -1,6 +1,6 @@
 import type { Diagnostic } from "@codemirror/lint";
 import type { EditorState } from "@codemirror/state";
-import type { DiagnosticMessage } from "./types.js";
+import type { DiagnosticMessage } from "typst-web-service";
 
 function parseRange(range: string): [number, number, number, number] {
   const m = range.match(/(\d+):(\d+)-(\d+):(\d+)/);

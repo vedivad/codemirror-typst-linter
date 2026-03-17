@@ -2,11 +2,11 @@ import { linter, lintGutter, type Diagnostic } from "@codemirror/lint";
 import type { Extension } from "@codemirror/state";
 import { ViewPlugin } from "@codemirror/view";
 import { TypstWorkerPlugin } from "./plugin.js";
-import { TypstService, createTypstService } from "./service.js";
-import type { TypstServiceOptions } from "./service.js";
+import { TypstService, createTypstService } from "typst-web-service";
+import type { TypstServiceOptions } from "typst-web-service";
 
 export { TypstService, createTypstService };
-export type { TypstServiceOptions, CompileResult } from "./service.js";
+export type { TypstServiceOptions, CompileResult } from "typst-web-service";
 
 export interface TypstLinterOptions extends TypstServiceOptions {
   /** Delay in ms before linting fires after a document change. Default: 0. */

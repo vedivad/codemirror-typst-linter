@@ -1,0 +1,44 @@
+{
+  "name": "codemirror-typst",
+  "version": "0.1.0",
+  "description": "CodeMirror 6 extension for Typst diagnostics with incremental compilation",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch"
+  },
+  "dependencies": {
+    "typst-web-service": "workspace:*"
+  },
+  "peerDependencies": {
+    "@codemirror/lint": "^6",
+    "@codemirror/state": "^6",
+    "@codemirror/view": "^6"
+  },
+  "devDependencies": {
+    "@codemirror/lint": "^6.9.5",
+    "@codemirror/state": "^6.5.4",
+    "@codemirror/view": "^6.39.16",
+    "tsup": "^8.0.0",
+    "typescript": "^5.9.3"
+  },
+  "keywords": [
+    "codemirror",
+    "typst",
+    "linter",
+    "diagnostics",
+    "codemirror-extension"
+  ],
+  "license": "MIT"
+}

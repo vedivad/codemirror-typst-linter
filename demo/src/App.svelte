@@ -3,7 +3,7 @@
   import Editor from './Editor.svelte';
   import DiagnosticsPanel from './DiagnosticsPanel.svelte';
   import PreviewPanel from './PreviewPanel.svelte';
-  import { TypstService } from 'codemirror-typst-linter';
+  import { TypstService } from 'typst-web-service';
   import type { Diagnostic } from '@codemirror/lint';
   import initRenderer, { TypstRendererBuilder, type TypstRenderer } from '@myriaddreamin/typst-ts-renderer';
   import rendererWasmUrl from '@myriaddreamin/typst-ts-renderer/pkg/typst_ts_renderer_bg.wasm?url';
@@ -29,7 +29,7 @@
   let renderer: TypstRenderer | null = null;
 
   const service = new TypstService(
-    new Worker(new URL('codemirror-typst-linter/worker', import.meta.url), { type: 'module' }),
+    new Worker(new URL('typst-web-service/worker', import.meta.url), { type: 'module' }),
     { onVector: applyVector },
   );
   onDestroy(() => service.destroy());
@@ -64,7 +64,7 @@
 
 <div class="layout">
   <header>
-    <h1>codemirror-typst-linter</h1>
+    <h1>codemirror-typst</h1>
     <p>Typst diagnostics with incremental compilation and @preview/ package support.</p>
   </header>
   <div class="main">

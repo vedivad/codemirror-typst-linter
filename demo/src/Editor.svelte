@@ -4,7 +4,8 @@
   import { EditorState } from '@codemirror/state';
   import { oneDark } from '@codemirror/theme-one-dark';
   import { typst } from 'codemirror-lang-typst';
-  import { typstLinter, TypstService } from 'codemirror-typst-linter';
+  import { typstLinter } from 'codemirror-typst';
+  import type { TypstService } from 'typst-web-service';
   import type { Diagnostic } from '@codemirror/lint';
 
   interface Props {

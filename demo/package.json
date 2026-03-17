@@ -1,5 +1,5 @@
 {
-  "name": "codemirror-typst-linter-demo",
+  "name": "codemirror-typst-demo",
   "version": "0.0.1",
   "type": "module",
   "private": true,
@@ -16,7 +16,8 @@
     "@myriaddreamin/typst-ts-renderer": "0.7.0-rc2",
     "codemirror": "^6.0.2",
     "codemirror-lang-typst": "^0.4.0",
-    "codemirror-typst-linter": "file:..",
+    "codemirror-typst": "workspace:*",
+    "typst-web-service": "workspace:*",
     "svelte": "^5.0.0"
   },
   "devDependencies": {

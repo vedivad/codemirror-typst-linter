@@ -38,7 +38,7 @@ const DEFAULT_WASM_URL =
  * all extensions (linter, autocomplete, preview, etc.).
  *
  * Prefer constructing with an explicit Worker for Vite apps:
- *   new TypstService(new Worker(new URL('codemirror-typst-linter/worker', import.meta.url)), options)
+ *   new TypstService(new Worker(new URL('typst-web-service/worker', import.meta.url)), options)
  *
  * Or use createTypstService() for a zero-config setup via an inlined blob worker.
  */
@@ -115,7 +115,7 @@ export class TypstService {
  * Works without any bundler configuration.
  *
  * For Vite apps, the explicit Worker form avoids the blob indirection:
- *   new TypstService(new Worker(new URL('codemirror-typst-linter/worker', import.meta.url)), options)
+ *   new TypstService(new Worker(new URL('typst-web-service/worker', import.meta.url)), options)
  */
 export function createTypstService(
   options: TypstServiceOptions = {},
