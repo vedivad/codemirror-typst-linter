@@ -199,6 +199,17 @@ export class TypstService {
     throw new Error("Unexpected response type");
   }
 
+  /**
+   * Create a TypstService using an inlined worker blob.
+   * Works without any bundler configuration.
+   *
+   * For Vite apps, prefer the explicit Worker constructor to avoid the blob indirection:
+   *   new TypstService(new Worker(new URL('typst-web-service/worker', import.meta.url)), options)
+   */
+  static create(options: TypstServiceOptions = {}): TypstService {
+    return new TypstService(createWorker(), options);
+  }
+
   destroy(): void {
     const id = ++this.idCounter;
     workerRpc(this.worker, { type: "destroy", id }, 5_000)
@@ -207,15 +218,3 @@ export class TypstService {
   }
 }
 
-/**
- * Create a TypstService using an inlined worker blob.
- * Works without any bundler configuration.
- *
- * For Vite apps, the explicit Worker form avoids the blob indirection:
- *   new TypstService(new Worker(new URL('typst-web-service/worker', import.meta.url)), options)
- */
-export function createTypstService(
-  options: TypstServiceOptions = {},
-): TypstService {
-  return new TypstService(createWorker(), options);
-}

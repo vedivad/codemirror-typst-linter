@@ -2,10 +2,10 @@ import { linter, lintGutter, type Diagnostic } from "@codemirror/lint";
 import type { Extension } from "@codemirror/state";
 import { ViewPlugin } from "@codemirror/view";
 import { TypstWorkerPlugin } from "./plugin.js";
-import { TypstService, createTypstService } from "typst-web-service";
+import { TypstService } from "typst-web-service";
 import type { TypstServiceOptions } from "typst-web-service";
 
-export { TypstService, createTypstService };
+export { TypstService };
 export type { TypstServiceOptions, RendererOptions, CompileResult } from "typst-web-service";
 
 export interface TypstLinterOptions extends TypstServiceOptions {
@@ -31,7 +31,7 @@ export interface TypstLinterOptions extends TypstServiceOptions {
  */
 export function typstLinter(options: TypstLinterOptions = {}): Extension {
   const { service: externalService, delay = 0, onDiagnostics, ...serviceOptions } = options;
-  const service = externalService ?? createTypstService(serviceOptions);
+  const service = externalService ?? TypstService.create(serviceOptions);
 
   const workerPlugin = ViewPlugin.define(
     () =>
