@@ -4,13 +4,12 @@ import { ViewPlugin } from "@codemirror/view";
 import { TypstWorkerPlugin } from "./plugin.js";
 import { TypstService } from "@vedivad/typst-web-service";
 import type { TypstServiceOptions } from "@vedivad/typst-web-service";
-import { createTypstShikiExtension, createTypstShikiHighlighting, TypstShiki } from "./shiki.js";
+import { createTypstShikiExtension, createTypstShikiHighlighting } from "./shiki.js";
 import type { TypstShikiOptions, TypstShikiHighlighting } from "./shiki.js";
 
 export { TypstService };
 export { createTypstShikiExtension };
 export { createTypstShikiHighlighting };
-export { TypstShiki };
 export type { TypstServiceOptions, RendererOptions, CompileResult } from "@vedivad/typst-web-service";
 export type { TypstShikiOptions, TypstShikiHighlighting };
 
@@ -37,12 +36,12 @@ export interface TypstLinterOptions extends TypstServiceOptions {
  * Create a Typst linter extension for CodeMirror.
  *
  * Without a service, one is created automatically (destroyed with the editor):
- *   typstLinter({ onDiagnostics, onSvg })
+ *   createTypstLinter({ onDiagnostics, renderer: { ... } })
  *
  * With an explicit service, the caller manages its lifecycle:
- *   typstLinter({ service, onDiagnostics })
+ *   createTypstLinter({ service, onDiagnostics })
  */
-export function typstLinter(options: TypstLinterOptions = {}): Extension {
+export function createTypstLinter(options: TypstLinterOptions = {}): Extension {
   const { service: externalService, delay = 0, onDiagnostics, ...serviceOptions } = options;
   const service = externalService ?? TypstService.create(serviceOptions);
 
@@ -66,13 +65,6 @@ export function typstLinter(options: TypstLinterOptions = {}): Extension {
   );
 
   return [workerPlugin, linterExtension, lintGutter()];
-}
-
-/**
- * Alias for naming consistency with other extension factories.
- */
-export function createTypstLinter(options: TypstLinterOptions = {}): Extension {
-  return typstLinter(options);
 }
 
 /**

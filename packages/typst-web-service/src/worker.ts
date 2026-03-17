@@ -78,61 +78,58 @@ const yieldToEventLoop = () => new Promise<void>((r) => setTimeout(r, 0));
 type CompileRequest = Extract<WorkerRequest, { type: "compile" }>;
 type RenderRequest = Extract<WorkerRequest, { type: "render" }>;
 
-let pendingCompile: CompileRequest | null = null;
-let processingCompile = false;
+function makeQueue<T extends { id: number }>(handle: (req: T) => Promise<void>): (req: T) => void {
+  let pending: T | null = null;
+  let processing = false;
 
-let pendingRender: RenderRequest | null = null;
-let processingRender = false;
-
-async function drainCompileQueue(): Promise<void> {
-  processingCompile = true;
-  while (pendingCompile) {
-    const req = pendingCompile;
-    pendingCompile = null;
-    await yieldToEventLoop();
-    if (pendingCompile) {
-      self.postMessage({ type: "cancelled", id: req.id } satisfies WorkerResponse);
-      continue;
+  async function drain(): Promise<void> {
+    processing = true;
+    while (pending) {
+      const req = pending;
+      pending = null;
+      await yieldToEventLoop();
+      if (pending) {
+        self.postMessage({ type: "cancelled", id: req.id } satisfies WorkerResponse);
+        continue;
+      }
+      await handle(req);
     }
-    try {
-      const { diagnostics, vector: vectorData } = await compile(req.source);
-      const vector = vectorData ? transferBuffer(vectorData) : undefined;
-      const msg: WorkerResponse = { type: "result", id: req.id, diagnostics, vector };
-      self.postMessage(msg, vector ? [vector] : []);
-    } catch (err) {
-      postError(req.id, err);
-    }
+    processing = false;
   }
-  processingCompile = false;
+
+  return (req: T) => {
+    pending = req;
+    if (!processing) drain();
+  };
 }
 
-async function drainRenderQueue(): Promise<void> {
-  processingRender = true;
-  while (pendingRender) {
-    const req = pendingRender;
-    pendingRender = null;
-    await yieldToEventLoop();
-    if (pendingRender) {
-      self.postMessage({ type: "cancelled", id: req.id } satisfies WorkerResponse);
-      continue;
-    }
-    try {
-      if (!compiler) throw new Error("Compiler not initialized");
-      compiler.addSource("/main.typ", req.source);
-      const result = await compiler.compile({
-        mainFilePath: "/main.typ",
-        format: PDF_FORMAT,
-        diagnostics: "none",
-      } as Parameters<typeof compiler.compile>[0]);
-      if (!result.result) throw new Error("Compilation produced no output");
-      const data = transferBuffer(result.result);
-      self.postMessage({ type: "pdf", id: req.id, data } satisfies WorkerResponse, [data]);
-    } catch (err) {
-      postError(req.id, err);
-    }
+const enqueueCompile = makeQueue<CompileRequest>(async (req) => {
+  try {
+    const { diagnostics, vector: vectorData } = await compile(req.source);
+    const vector = vectorData ? transferBuffer(vectorData) : undefined;
+    const msg: WorkerResponse = { type: "result", id: req.id, diagnostics, vector };
+    self.postMessage(msg, vector ? [vector] : []);
+  } catch (err) {
+    postError(req.id, err);
   }
-  processingRender = false;
-}
+});
+
+const enqueueRender = makeQueue<RenderRequest>(async (req) => {
+  try {
+    if (!compiler) throw new Error("Compiler not initialized");
+    compiler.addSource("/main.typ", req.source);
+    const result = await compiler.compile({
+      mainFilePath: "/main.typ",
+      format: PDF_FORMAT,
+      diagnostics: "none",
+    } as Parameters<typeof compiler.compile>[0]);
+    if (!result.result) throw new Error("Compilation produced no output");
+    const data = transferBuffer(result.result);
+    self.postMessage({ type: "pdf", id: req.id, data } satisfies WorkerResponse, [data]);
+  } catch (err) {
+    postError(req.id, err);
+  }
+});
 
 self.onmessage = async (e: MessageEvent<WorkerRequest>) => {
   const req = e.data;
@@ -147,17 +144,8 @@ self.onmessage = async (e: MessageEvent<WorkerRequest>) => {
     return;
   }
 
-  if (req.type === "compile") {
-    pendingCompile = req;
-    if (!processingCompile) drainCompileQueue();
-    return;
-  }
-
-  if (req.type === "render") {
-    pendingRender = req;
-    if (!processingRender) drainRenderQueue();
-    return;
-  }
+  if (req.type === "compile") { enqueueCompile(req); return; }
+  if (req.type === "render") { enqueueRender(req); return; }
 
   if (req.type === "destroy") {
     self.postMessage({ type: "destroyed", id: req.id } satisfies WorkerResponse);
