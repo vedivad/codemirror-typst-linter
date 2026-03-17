@@ -10,12 +10,14 @@ export interface PluginOptions {
 }
 
 export class TypstWorkerPlugin {
-  private seq = 0;
+  private controller: AbortController | null = null;
 
   constructor(private options: PluginOptions) {}
 
   async lint(view: EditorView): Promise<Diagnostic[]> {
-    const mySeq = ++this.seq;
+    this.controller?.abort();
+    this.controller = new AbortController();
+    const { signal } = this.controller;
     const source = view.state.doc.toString();
 
     let diagnostics: Diagnostic[];
@@ -23,11 +25,11 @@ export class TypstWorkerPlugin {
     try {
       const result = await this.options.service.compile(source);
 
-      if (mySeq !== this.seq) return [];
+      if (signal.aborted) return [];
 
       diagnostics = result.diagnostics.map((d) => toCMDiagnostic(view.state, d));
     } catch (err) {
-      if (mySeq !== this.seq) return [];
+      if (signal.aborted) return [];
       diagnostics = [
         {
           from: 0,
@@ -44,6 +46,7 @@ export class TypstWorkerPlugin {
   }
 
   destroy() {
+    this.controller?.abort();
     if (this.options.ownsService) this.options.service.destroy();
   }
 }
