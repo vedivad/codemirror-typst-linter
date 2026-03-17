@@ -1,6 +1,6 @@
 {
   "name": "@vedivad/codemirror-typst",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "CodeMirror 6 extension for Typst diagnostics with incremental compilation",
   "type": "module",
   "main": "./dist/index.js",
@@ -19,7 +19,7 @@
     "dev": "tsup --watch"
   },
   "dependencies": {
-    "@vedivad/typst-web-service": "workspace:*"
+    "@vedivad/typst-web-service": "^0.1.0"
   },
   "peerDependencies": {
     "@codemirror/lint": "^6",
