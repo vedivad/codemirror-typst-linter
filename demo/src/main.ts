@@ -23,7 +23,7 @@ const diagnosticsEl = document.getElementById('diagnostics')!;
 const previewEl = document.getElementById('preview')!;
 
 const typstExtensions = await createTypstExtensions({
-  shiki: {
+  highlighting: {
     themes: {
       light: 'github-light',
       dark: 'github-dark',
@@ -31,7 +31,7 @@ const typstExtensions = await createTypstExtensions({
     defaultColor: 'dark',
     engine: 'javascript',
   },
-  linter: {
+  compiler: {
     renderer: {
       module: () => import('@myriaddreamin/typst-ts-renderer'),
       onSvg: (svg) => {

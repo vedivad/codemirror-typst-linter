@@ -4,12 +4,12 @@ Typst tooling for the web, split into small packages.
 
 ## Packages
 
-| Package                      | Path                         | Purpose                                         |
-| ---------------------------- | ---------------------------- | ----------------------------------------------- |
-| `@vedivad/typst-web-service` | `packages/typst-web-service` | Core worker-backed Typst compile/render service |
-| `@vedivad/codemirror-typst`  | `packages/codemirror-typst`  | CodeMirror linter extension using the service   |
+| Package                      | Path                         | Purpose                                                               |
+| ---------------------------- | ---------------------------- | --------------------------------------------------------------------- |
+| `@vedivad/typst-web-service` | `packages/typst-web-service` | Core worker-backed Typst compile/render service                       |
+| `@vedivad/codemirror-typst`  | `packages/codemirror-typst`  | CodeMirror syntax highlighting and linter extension using the service |
 
-## Quickstart
+## Usage
 
 ### `typst-web-service`
 
@@ -33,15 +33,25 @@ import { EditorState } from "@codemirror/state";
 import { createTypstExtensions } from "@vedivad/codemirror-typst";
 
 const typstExtensions = await createTypstExtensions({
-  shiki: {
+  highlighting: {
     themes: {
       light: "github-light",
       dark: "github-dark",
     },
     defaultColor: "dark",
   },
-  linter: {
-    // renderer/onDiagnostics etc
+  compiler: {
+    renderer: {
+      module: () => import("@myriaddreamin/typst-ts-renderer"),
+      onSvg: (svg) => {
+        // Hook: called after successful compile with rendered SVG.
+        document.querySelector("#preview")!.innerHTML = svg;
+      },
+    },
+    onDiagnostics: (diagnostics) => {
+      // Hook: called after each lint/compile pass.
+      console.log(diagnostics);
+    },
   },
 });
 
