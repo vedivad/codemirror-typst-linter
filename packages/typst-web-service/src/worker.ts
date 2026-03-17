@@ -23,8 +23,7 @@ const packageRegistry = new FetchPackageRegistry(accessModel);
 let compiler: TypstCompiler | null = null;
 
 async function initCompiler(wasmUrl: string, fontUrls: string[], packages: boolean): Promise<void> {
-  // createTypstCompiler() returns a looser type; cast to the full interface
-  compiler = createTypstCompiler() as unknown as TypstCompiler;
+  compiler = createTypstCompiler();
   await compiler.init({
     getModule: () => wasmUrl,
     beforeBuild: [
@@ -44,7 +43,7 @@ async function compile(source: string): Promise<{ diagnostics: DiagnosticMessage
   if (!compiler) throw new Error("Compiler not initialized");
   compiler.addSource("/main.typ", source);
   const result = await compiler.compile({ mainFilePath: "/main.typ", diagnostics: "full" });
-  const diagnostics: DiagnosticMessage[] = (result.diagnostics ?? []).map((d: any) => ({
+  const diagnostics: DiagnosticMessage[] = (result.diagnostics ?? []).map((d) => ({
     ...d,
     severity: d.severity as DiagnosticMessage["severity"],
     range: parseRange(d.range),
