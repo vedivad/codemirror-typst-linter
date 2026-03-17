@@ -58,8 +58,6 @@ export interface TypstServiceOptions {
    * Default: true.
    */
   packages?: boolean;
-  /** Called after each compile with the vector artifact bytes, usable with typst-ts-renderer for SVG rendering. */
-  onVector?: (vector: Uint8Array) => void;
   /**
    * Opt-in SVG preview. When set, the renderer is initialized lazily and `onSvg`
    * is called after each successful compile.
@@ -98,7 +96,6 @@ export class TypstService {
   readonly rendererReady?: Promise<void>;
   private idCounter = 0;
 
-  private onVector?: (vector: Uint8Array) => void;
   private onSvg?: (svg: string) => void;
   private rendererInstance?: Promise<RendererInstance>;
 
@@ -109,7 +106,6 @@ export class TypstService {
     private worker: Worker,
     options: TypstServiceOptions = {},
   ) {
-    this.onVector = options.onVector;
     this.onSvg = options.renderer?.onSvg;
 
     if (options.renderer) {
@@ -165,7 +161,6 @@ export class TypstService {
       const vector = response.vector ? new Uint8Array(response.vector) : undefined;
       if (vector) {
         this.lastVector = vector;
-        this.onVector?.(vector);
         this.#emitSvg(vector);
       }
       return { diagnostics: response.diagnostics, vector };
