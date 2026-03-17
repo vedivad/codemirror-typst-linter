@@ -15,7 +15,7 @@ export interface CompileResult {
  *   renderer: () => import('@myriaddreamin/typst-ts-renderer')
  */
 export type RendererModule = () => Promise<{
-  default: (wasmUrl?: string) => Promise<void>;
+  default: (wasmUrl?: string) => Promise<unknown>;
   TypstRendererBuilder: new () => {
     build(): Promise<RendererInstance>;
   };

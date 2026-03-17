@@ -2,9 +2,7 @@ import { EditorView, basicSetup } from 'codemirror';
 import { EditorState } from '@codemirror/state';
 import { oneDark } from '@codemirror/theme-one-dark';
 import { typst } from 'codemirror-lang-typst';
-import { typstLinter } from 'codemirror-typst';
-import type { TypstService } from 'typst-web-service';
-import type { Diagnostic } from '@codemirror/lint';
+import { typstLinter, type TypstLinterOptions } from 'codemirror-typst';
 
 const initialDoc = `\
 // Package imports are fetched on demand from packages.typst.org.
@@ -20,11 +18,7 @@ const initialDoc = `\
 // #let x = 1 + "oops"
 `;
 
-export function createEditor(
-  parent: HTMLElement,
-  service: TypstService,
-  onDiagnostics: (diagnostics: Diagnostic[]) => void,
-) {
+export function createEditor(parent: HTMLElement, options: TypstLinterOptions) {
   return new EditorView({
     state: EditorState.create({
       doc: initialDoc,
@@ -32,7 +26,7 @@ export function createEditor(
         basicSetup,
         oneDark,
         typst(),
-        typstLinter(service, { onDiagnostics }),
+        typstLinter(options),
       ],
     }),
     parent,
