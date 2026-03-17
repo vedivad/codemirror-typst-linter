@@ -5,8 +5,14 @@ declare const __WORKER_CODE__: string;
 
 export function createWorker(): Worker {
   const blob = new Blob([__WORKER_CODE__], { type: "application/javascript" });
-  // Blob URL is intentionally not revoked — it must remain valid for the Worker's lifetime
-  return new Worker(URL.createObjectURL(blob));
+  const url = URL.createObjectURL(blob);
+  const worker = new Worker(url);
+  const origTerminate = worker.terminate.bind(worker);
+  worker.terminate = () => {
+    origTerminate();
+    URL.revokeObjectURL(url);
+  };
+  return worker;
 }
 
 export function workerRpc(
