@@ -16,6 +16,7 @@ import type { WorkerRequest, WorkerResponse, DiagnosticMessage } from "./types.j
 
 // typst-ts-web-compiler format enum: 1 = PDF
 const PDF_FORMAT = 1;
+const MAIN_FILE = "/main.typ";
 
 const accessModel = new MemoryAccessModel();
 const packageRegistry = new FetchPackageRegistry(accessModel);
@@ -43,9 +44,8 @@ function parseRange(range: string): DiagnosticMessage["range"] | null {
 }
 
 async function compile(source: string): Promise<{ diagnostics: DiagnosticMessage[]; vector?: Uint8Array }> {
-  if (!compiler) throw new Error("Compiler not initialized");
-  compiler.addSource("/main.typ", source);
-  const result = await compiler.compile({ mainFilePath: "/main.typ", diagnostics: "full" });
+  compiler!.addSource(MAIN_FILE, source);
+  const result = await compiler!.compile({ mainFilePath: MAIN_FILE, diagnostics: "full" });
   const diagnostics: DiagnosticMessage[] = (result.diagnostics ?? []).flatMap((d) => {
     const range = parseRange(d.range);
     if (!range) return [];
@@ -116,13 +116,12 @@ const enqueueCompile = makeQueue<CompileRequest>(async (req) => {
 
 const enqueueRender = makeQueue<RenderRequest>(async (req) => {
   try {
-    if (!compiler) throw new Error("Compiler not initialized");
-    compiler.addSource("/main.typ", req.source);
-    const result = await compiler.compile({
-      mainFilePath: "/main.typ",
+    compiler!.addSource(MAIN_FILE, req.source);
+    const result = await compiler!.compile({
+      mainFilePath: MAIN_FILE,
       format: PDF_FORMAT,
       diagnostics: "none",
-    } as Parameters<typeof compiler.compile>[0]);
+    } as Parameters<TypstCompiler["compile"]>[0]);
     if (!result.result) throw new Error("Compilation produced no output");
     const data = transferBuffer(result.result);
     self.postMessage({ type: "pdf", id: req.id, data } satisfies WorkerResponse, [data]);

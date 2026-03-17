@@ -81,6 +81,8 @@ const DEFAULT_WASM_URL =
 const DEFAULT_RENDERER_WASM_URL =
   "https://cdn.jsdelivr.net/npm/@myriaddreamin/typst-ts-renderer@0.7.0-rc2/pkg/typst_ts_renderer_bg.wasm";
 
+const TIMEOUT = { INIT: 60_000, RENDER: 60_000, DESTROY: 5_000 } as const;
+
 /**
  * Manages a Typst compiler worker. Create one instance and share it across
  * all extensions (linter, autocomplete, preview, etc.).
@@ -122,7 +124,7 @@ export class TypstService {
         fonts: options.fonts ?? DEFAULT_FONTS,
         packages: options.packages ?? true,
       },
-      60_000,
+      TIMEOUT.INIT,
     ).then((res) => {
       if (res.type === "error")
         throw new Error(`TypstService init failed: ${res.message}`);
@@ -192,7 +194,7 @@ export class TypstService {
   async renderPdf(source: string): Promise<Uint8Array> {
     await this.ready;
     const id = ++this.idCounter;
-    const response = await workerRpc(this.worker, { type: "render", id, source }, 60_000);
+    const response = await workerRpc(this.worker, { type: "render", id, source }, TIMEOUT.RENDER);
     if (response.type === "cancelled") throw new Error("Render cancelled");
     if (response.type === "pdf") return new Uint8Array(response.data);
     if (response.type === "error") throw new Error(response.message);
@@ -212,7 +214,7 @@ export class TypstService {
 
   destroy(): void {
     const id = ++this.idCounter;
-    workerRpc(this.worker, { type: "destroy", id }, 5_000)
+    workerRpc(this.worker, { type: "destroy", id }, TIMEOUT.DESTROY)
       .catch((err) => console.error("TypstService destroy failed:", err))
       .finally(() => this.worker.terminate());
   }
