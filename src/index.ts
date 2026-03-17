@@ -11,8 +11,6 @@ export type { TypstServiceOptions, CompileResult } from "./service.js";
 export interface TypstLinterOptions extends TypstServiceOptions {
   /** Delay in ms before linting fires after a document change. Default: 0. */
   delay?: number;
-  /** Include diagnostics from imported packages, not just the main file. Default: true. */
-  includePackageDiagnostics?: boolean;
   /** Called after each lint pass with the resulting diagnostics. */
   onDiagnostics?: (diagnostics: Diagnostic[]) => void;
   /** Called after each compile with the vector artifact bytes, usable with typst-ts-renderer for SVG rendering. */
@@ -48,7 +46,6 @@ export function typstLinter(
   }
 
   const delay = opts.delay ?? 0;
-  const includePackageDiagnostics = opts.includePackageDiagnostics ?? true;
   const onDiagnostics = opts.onDiagnostics;
   const onVector = opts.onVector;
 
@@ -57,7 +54,6 @@ export function typstLinter(
       new TypstWorkerPlugin({
         service,
         ownsService,
-        includePackageDiagnostics,
         onDiagnostics,
         onVector,
       }),

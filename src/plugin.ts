@@ -6,7 +6,6 @@ import type { TypstService } from "./service.js";
 export interface PluginOptions {
   service: TypstService;
   ownsService: boolean;
-  includePackageDiagnostics: boolean;
   onDiagnostics?: (diagnostics: Diagnostic[]) => void;
   onVector?: (vector: Uint8Array) => void;
 }
@@ -29,11 +28,7 @@ export class TypstWorkerPlugin {
 
       if (result.vector) this.options.onVector?.(result.vector);
 
-      diagnostics = result.diagnostics
-        .filter(
-          (d) => this.options.includePackageDiagnostics || d.package === "",
-        )
-        .map((d) => toCMDiagnostic(view.state, d));
+      diagnostics = result.diagnostics.map((d) => toCMDiagnostic(view.state, d));
     } catch (err) {
       if (mySeq !== this.seq) return [];
       diagnostics = [
