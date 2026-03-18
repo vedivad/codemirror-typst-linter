@@ -36,6 +36,7 @@ const diagnosticsEl = document.getElementById("diagnostics")!;
 const previewEl = document.getElementById("preview")!;
 const editorEl = document.getElementById("editor")!;
 const tabsEl = document.getElementById("tabs")!;
+const exportBtn = document.getElementById("export-pdf") as HTMLButtonElement;
 
 const formatter = new TypstFormatter({ tab_spaces: 2, max_width: 80 });
 
@@ -118,6 +119,31 @@ function renderTabs() {
     tabsEl.appendChild(tab);
   }
 }
+
+// --- PDF export ---
+
+exportBtn.addEventListener("click", async () => {
+  if (activeView) {
+    files[activeFile] = activeView.state.doc.toString();
+  }
+  exportBtn.disabled = true;
+  exportBtn.textContent = "Exporting…";
+  try {
+    const pdf = await service.renderPdf(files);
+    const blob = new Blob([pdf.slice()], { type: "application/pdf" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "output.pdf";
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    console.error("PDF export failed:", err);
+  } finally {
+    exportBtn.disabled = false;
+    exportBtn.textContent = "Export PDF";
+  }
+});
 
 // --- Init ---
 
