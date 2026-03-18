@@ -37,6 +37,8 @@ export interface TypstLinterOptions extends TypstServiceOptions {
    * When omitted, a service is created automatically and destroyed with the editor.
    */
   service?: TypstService;
+  /** File path this editor represents. Default: "/main.typ" */
+  filePath?: string;
   /** Delay in ms before linting fires after a document change. Default: 0. */
   delay?: number;
   /** Called after each lint pass with the resulting diagnostics. */
@@ -55,6 +57,7 @@ export interface TypstLinterOptions extends TypstServiceOptions {
 export function createTypstLinter(options: TypstLinterOptions = {}): Extension {
   const {
     service: externalService,
+    filePath,
     delay = 0,
     onDiagnostics,
     ...serviceOptions
@@ -65,6 +68,7 @@ export function createTypstLinter(options: TypstLinterOptions = {}): Extension {
     () =>
       new TypstWorkerPlugin({
         service,
+        filePath,
         onDestroy: externalService ? undefined : () => service.destroy(),
         onDiagnostics,
       }),

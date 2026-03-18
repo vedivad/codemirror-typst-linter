@@ -73,7 +73,11 @@ export interface TypstServiceOptions {
    *   }
    */
   renderer?: RendererOptions;
+  /** Debounce delay (ms) for auto-compilation after setFile(). Default: 150. */
+  compileDelay?: number;
 }
+
+type DiagnosticListener = (diagnostics: DiagnosticMessage[]) => void;
 
 const DEFAULT_FONTS = [
   "https://cdn.jsdelivr.net/npm/roboto-font@0.1.0/fonts/Roboto/roboto-regular-webfont.ttf",
@@ -88,13 +92,12 @@ const DEFAULT_RENDERER_WASM_URL =
 const TIMEOUT = { INIT: 60_000, RENDER: 60_000, DESTROY: 5_000 } as const;
 
 /**
- * Manages a Typst compiler worker. Create one instance and share it across
- * all extensions (linter, autocomplete, preview, etc.).
+ * Manages a Typst compiler worker and project file state.
  *
- * Prefer constructing with an explicit Worker for Vite apps:
- *   new TypstService(new Worker(new URL('typst-web-service/worker', import.meta.url)), options)
+ * Use `setFile` / `deleteFile` to update project files. The service
+ * auto-recompiles (debounced) and dispatches diagnostics to subscribers.
  *
- * Or use createTypstService() for a zero-config setup via an inlined blob worker.
+ * Subscribe to per-file diagnostics with `onDiagnostics(path, callback)`.
  */
 export class TypstService {
   readonly ready: Promise<void>;
@@ -102,17 +105,24 @@ export class TypstService {
   readonly rendererReady?: Promise<void>;
   private idCounter = 0;
 
-  private onSvg?: (svg: string) => void;
+  private onSvgCallback?: (svg: string) => void;
   private rendererInstance?: Promise<RendererInstance>;
 
   /** The most recent vector artifact from a compile, if any. */
   lastVector?: Uint8Array;
 
+  // --- File store ---
+  private files = new Map<string, string>();
+  private listeners = new Map<string, Set<DiagnosticListener>>();
+  private compileTimer: ReturnType<typeof setTimeout> | null = null;
+  private compileDelay: number;
+
   constructor(
     private worker: Worker,
     options: TypstServiceOptions = {},
   ) {
-    this.onSvg = options.renderer?.onSvg;
+    this.onSvgCallback = options.renderer?.onSvg;
+    this.compileDelay = options.compileDelay ?? 150;
 
     if (options.renderer) {
       this.rendererInstance = this.#initRenderer(
@@ -138,6 +148,85 @@ export class TypstService {
     });
   }
 
+  // --- File management ---
+
+  /** Update or add a file. Triggers a debounced auto-compile. */
+  setFile(path: string, content: string): void {
+    if (this.files.get(path) === content) return;
+    this.files.set(path, content);
+    this.#scheduleCompile();
+  }
+
+  /** Remove a file. Triggers a debounced auto-compile. */
+  deleteFile(path: string): void {
+    if (!this.files.has(path)) return;
+    this.files.delete(path);
+    this.#scheduleCompile();
+  }
+
+  /** Get content of a stored file. */
+  getFile(path: string): string | undefined {
+    return this.files.get(path);
+  }
+
+  /** Snapshot of all stored files. */
+  getFiles(): Record<string, string> {
+    return Object.fromEntries(this.files);
+  }
+
+  // --- Diagnostic subscriptions ---
+
+  /** Subscribe to diagnostics for a file path. Returns an unsubscribe function. */
+  onDiagnostics(path: string, callback: DiagnosticListener): () => void {
+    let set = this.listeners.get(path);
+    if (!set) {
+      set = new Set();
+      this.listeners.set(path, set);
+    }
+    set.add(callback);
+    return () => set.delete(callback);
+  }
+
+  #dispatchDiagnostics(diagnostics: DiagnosticMessage[]): void {
+    // Group diagnostics by path
+    const byPath = new Map<string, DiagnosticMessage[]>();
+    for (const d of diagnostics) {
+      let arr = byPath.get(d.path);
+      if (!arr) {
+        arr = [];
+        byPath.set(d.path, arr);
+      }
+      arr.push(d);
+    }
+
+    // Notify all subscribers — send [] for files with no diagnostics
+    for (const [path, set] of this.listeners) {
+      const diags = byPath.get(path) ?? [];
+      for (const cb of set) cb(diags);
+    }
+  }
+
+  // --- Auto-compilation ---
+
+  #scheduleCompile(): void {
+    if (this.compileTimer) clearTimeout(this.compileTimer);
+    this.compileTimer = setTimeout(
+      () => this.#autoCompile(),
+      this.compileDelay,
+    );
+  }
+
+  async #autoCompile(): Promise<void> {
+    try {
+      const result = await this.compile();
+      this.#dispatchDiagnostics(result.diagnostics);
+    } catch {
+      // compile errors (timeouts, worker crashes) are not dispatched
+    }
+  }
+
+  // --- Compilation ---
+
   async #initRenderer(
     loadModule: RendererModule,
     wasmUrl?: string,
@@ -157,13 +246,21 @@ export class TypstService {
     }
   }
 
-  /** Compile a single source string (treated as /main.typ) or a map of files. */
+  /**
+   * Compile stored files (no args) or a one-off source/file map.
+   * When called without arguments, uses the file store and dispatches diagnostics to subscribers.
+   */
   async compile(
-    source: string | Record<string, string>,
+    source?: string | Record<string, string>,
   ): Promise<CompileResult> {
     await this.ready;
     const id = ++this.idCounter;
-    const files = typeof source === "string" ? { "/main.typ": source } : source;
+    const files =
+      source === undefined
+        ? this.getFiles()
+        : typeof source === "string"
+          ? { "/main.typ": source }
+          : source;
     const response = await workerRpc(this.worker, {
       type: "compile",
       id,
@@ -185,10 +282,10 @@ export class TypstService {
   }
 
   async #emitSvg(vector: Uint8Array): Promise<void> {
-    if (!this.onSvg || !this.rendererInstance) return;
+    if (!this.onSvgCallback || !this.rendererInstance) return;
     try {
       const renderer = await this.rendererInstance;
-      this.onSvg(this.#vectorToSvg(renderer, vector));
+      this.onSvgCallback(this.#vectorToSvg(renderer, vector));
     } catch {
       // renderer init failed; observable via rendererReady
     }
@@ -204,13 +301,18 @@ export class TypstService {
     return this.#vectorToSvg(renderer, vector);
   }
 
-  /** Render to PDF from a single source string (treated as /main.typ) or a map of files. */
+  /** Render stored files (no args) or a one-off source/file map to PDF. */
   async renderPdf(
-    source: string | Record<string, string>,
+    source?: string | Record<string, string>,
   ): Promise<Uint8Array> {
     await this.ready;
     const id = ++this.idCounter;
-    const files = typeof source === "string" ? { "/main.typ": source } : source;
+    const files =
+      source === undefined
+        ? this.getFiles()
+        : typeof source === "string"
+          ? { "/main.typ": source }
+          : source;
     const response = await workerRpc(
       this.worker,
       { type: "render", id, files },
@@ -234,6 +336,7 @@ export class TypstService {
   }
 
   destroy(): void {
+    if (this.compileTimer) clearTimeout(this.compileTimer);
     const id = ++this.idCounter;
     workerRpc(this.worker, { type: "destroy", id }, TIMEOUT.DESTROY)
       .catch((err) => console.error("TypstService destroy failed:", err))

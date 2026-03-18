@@ -1,18 +1,16 @@
-import { lintGutter, setDiagnostics } from "@codemirror/lint";
 import { EditorState } from "@codemirror/state";
 import { oneDark } from "@codemirror/theme-one-dark";
-import { EditorView, ViewPlugin } from "@codemirror/view";
 import {
+  createTypstLinter,
   createTypstShikiExtension,
   TypstService,
-  toCMDiagnostic,
 } from "@vedivad/codemirror-typst";
-import { basicSetup } from "codemirror";
+import { basicSetup, EditorView } from "codemirror";
 import { updateDiagnostics } from "./diagnostics";
 
 // --- File contents ---
 
-const files: Record<string, string> = {
+const initialFiles: Record<string, string> = {
   "/main.typ": `\
 #import "template.typ": greet
 
@@ -48,34 +46,12 @@ const service = TypstService.create({
   },
 });
 
-// --- Compilation ---
-
-let compileTimer: ReturnType<typeof setTimeout> | null = null;
-
-function scheduleCompile() {
-  if (compileTimer) clearTimeout(compileTimer);
-  compileTimer = setTimeout(doCompile, 150);
+// Seed the file store
+for (const [path, content] of Object.entries(initialFiles)) {
+  service.setFile(path, content);
 }
 
-async function doCompile() {
-  try {
-    const result = await service.compile(files);
-    updateDiagnostics(diagnosticsEl, []);
-
-    if (activeView) {
-      const state = activeView.state;
-      const cmDiags = result.diagnostics
-        .filter((d) => d.path === activeFile)
-        .map((d) => toCMDiagnostic(state, d));
-      updateDiagnostics(diagnosticsEl, cmDiags);
-      activeView.dispatch(setDiagnostics(state, cmDiags));
-    }
-  } catch (err) {
-    console.error("Compile failed:", err);
-  }
-}
-
-// --- Editor ---
+// --- Shared extensions ---
 
 const shikiExtension = await createTypstShikiExtension({
   themes: { light: "github-light", dark: "github-dark" },
@@ -83,38 +59,40 @@ const shikiExtension = await createTypstShikiExtension({
   engine: "javascript",
 });
 
-const onChangePlugin = ViewPlugin.define(() => ({
-  update(update) {
-    if (update.docChanged) {
-      files[activeFile] = update.state.doc.toString();
-      scheduleCompile();
-    }
-  },
-}));
+// --- Per-file editor states ---
 
-const sharedExtensions = [
-  basicSetup,
-  oneDark,
-  shikiExtension,
-  lintGutter(),
-  onChangePlugin,
-];
+const filePaths = Object.keys(initialFiles);
 
-// Store an EditorState per file
-const states: Record<string, EditorState> = {};
-for (const [path, content] of Object.entries(files)) {
-  states[path] = EditorState.create({
-    doc: content,
-    extensions: sharedExtensions,
+function makeState(path: string, doc: string): EditorState {
+  return EditorState.create({
+    doc,
+    extensions: [
+      basicSetup,
+      oneDark,
+      shikiExtension,
+      createTypstLinter({
+        service,
+        filePath: path,
+        onDiagnostics: (d) => {
+          if (path === activeFile) updateDiagnostics(diagnosticsEl, d);
+        },
+      }),
+    ],
   });
 }
 
-let activeFile = "/main.typ";
+const states: Record<string, EditorState> = {};
+for (const [path, content] of Object.entries(initialFiles)) {
+  states[path] = makeState(path, content);
+}
+
+// --- Tab switching ---
+
+let activeFile = filePaths[0];
 let activeView: EditorView | null = null;
 
 function switchTab(path: string) {
   if (activeView) {
-    // Save current state
     states[activeFile] = activeView.state;
   }
 
@@ -132,11 +110,9 @@ function switchTab(path: string) {
   renderTabs();
 }
 
-// --- Tabs ---
-
 function renderTabs() {
   tabsEl.innerHTML = "";
-  for (const path of Object.keys(files)) {
+  for (const path of filePaths) {
     const tab = document.createElement("button");
     tab.className = `tab${path === activeFile ? " active" : ""}`;
     tab.textContent = path.replace(/^\//, "");
@@ -147,5 +123,4 @@ function renderTabs() {
 
 // --- Init ---
 
-switchTab("/main.typ");
-scheduleCompile();
+switchTab(activeFile);
