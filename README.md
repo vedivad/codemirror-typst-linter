@@ -226,8 +226,20 @@ formatter: {
 | --- | --- |
 | `just install` | Install dependencies |
 | `just build` | Build both packages |
+| `just test` | Run tests with [Vitest](https://vitest.dev) |
 | `just format` | Format and lint with [Biome](https://biomejs.dev) |
 | `just dev` | Build packages and start the demo dev server |
+
+### Testing
+
+Tests use [Vitest](https://vitest.dev) with workspace mode — each package has its own test suite.
+
+```bash
+just test              # run all tests
+just test-watch        # watch mode
+```
+
+`typst-web-service` tests load real typstyle WASM for formatter integration tests. `codemirror-typst` tests use mocked services to verify diagnostic mapping, linter plugin behavior, and formatter error handling.
 
 ### Demo
 
