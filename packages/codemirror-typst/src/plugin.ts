@@ -1,52 +1,63 @@
 import type { Diagnostic } from "@codemirror/lint";
 import type { EditorView } from "@codemirror/view";
-import type {
-  DiagnosticMessage,
-  TypstService,
-} from "@vedivad/typst-web-service";
+import type { TypstService } from "@vedivad/typst-web-service";
 import { toCMDiagnostic } from "./diagnostics.js";
 
 export interface PluginOptions {
   service: TypstService;
   /** File path this editor represents. Default: "/main.typ" */
   filePath?: string;
+  /** Return all project files. The current editor's content is included automatically under filePath. */
+  getFiles?: () => Record<string, string>;
   onDestroy?: () => void;
   onDiagnostics?: (diagnostics: Diagnostic[]) => void;
 }
 
 export class TypstWorkerPlugin {
+  private controller: AbortController | null = null;
   private path: string;
-  private unsubscribe: () => void;
-  private pendingResolve: ((diags: DiagnosticMessage[]) => void) | null = null;
 
   constructor(private options: PluginOptions) {
     this.path = options.filePath ?? "/main.typ";
-    this.unsubscribe = options.service.onDiagnostics(this.path, (diags) => {
-      if (this.pendingResolve) {
-        this.pendingResolve(diags);
-        this.pendingResolve = null;
-      }
-    });
   }
 
   async lint(view: EditorView): Promise<Diagnostic[]> {
+    this.controller?.abort();
+    this.controller = new AbortController();
+    const { signal } = this.controller;
     const source = view.state.doc.toString();
 
-    // Update the file in the service — triggers debounced auto-compile
-    this.options.service.setFile(this.path, source);
+    const files = { ...this.options.getFiles?.(), [this.path]: source };
 
-    // Wait for the next diagnostic dispatch for our file
-    const diags = await new Promise<DiagnosticMessage[]>((resolve) => {
-      this.pendingResolve = resolve;
-    });
+    let diagnostics: Diagnostic[];
 
-    const diagnostics = diags.map((d) => toCMDiagnostic(view.state, d));
+    try {
+      const result = await this.options.service.compile(files);
+
+      if (signal.aborted) return [];
+
+      diagnostics = result.diagnostics
+        .filter((d) => d.path === this.path)
+        .map((d) => toCMDiagnostic(view.state, d));
+    } catch (err) {
+      if (signal.aborted) return [];
+      diagnostics = [
+        {
+          from: 0,
+          to: Math.min(1, view.state.doc.length),
+          severity: "error",
+          message: err instanceof Error ? err.message : String(err),
+          source: "typst",
+        },
+      ];
+    }
+
     this.options.onDiagnostics?.(diagnostics);
     return diagnostics;
   }
 
   destroy() {
-    this.unsubscribe();
+    this.controller?.abort();
     this.options.onDestroy?.();
   }
 }

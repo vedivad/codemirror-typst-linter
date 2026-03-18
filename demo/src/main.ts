@@ -10,7 +10,7 @@ import { updateDiagnostics } from "./diagnostics";
 
 // --- File contents ---
 
-const initialFiles: Record<string, string> = {
+const files: Record<string, string> = {
   "/main.typ": `\
 #import "template.typ": greet
 
@@ -46,11 +46,6 @@ const service = TypstService.create({
   },
 });
 
-// Seed the file store
-for (const [path, content] of Object.entries(initialFiles)) {
-  service.setFile(path, content);
-}
-
 // --- Shared extensions ---
 
 const shikiExtension = await createTypstShikiExtension({
@@ -59,9 +54,7 @@ const shikiExtension = await createTypstShikiExtension({
   engine: "javascript",
 });
 
-// --- Per-file editor states ---
-
-const filePaths = Object.keys(initialFiles);
+const filePaths = Object.keys(files);
 
 function makeState(path: string, doc: string): EditorState {
   return EditorState.create({
@@ -73,6 +66,7 @@ function makeState(path: string, doc: string): EditorState {
       createTypstLinter({
         service,
         filePath: path,
+        getFiles: () => files,
         onDiagnostics: (d) => {
           if (path === activeFile) updateDiagnostics(diagnosticsEl, d);
         },
@@ -82,7 +76,7 @@ function makeState(path: string, doc: string): EditorState {
 }
 
 const states: Record<string, EditorState> = {};
-for (const [path, content] of Object.entries(initialFiles)) {
+for (const [path, content] of Object.entries(files)) {
   states[path] = makeState(path, content);
 }
 
@@ -93,6 +87,8 @@ let activeView: EditorView | null = null;
 
 function switchTab(path: string) {
   if (activeView) {
+    // Persist editor content back to files map
+    files[activeFile] = activeView.state.doc.toString();
     states[activeFile] = activeView.state;
   }
 

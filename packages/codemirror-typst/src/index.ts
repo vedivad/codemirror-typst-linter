@@ -39,6 +39,8 @@ export interface TypstLinterOptions extends TypstServiceOptions {
   service?: TypstService;
   /** File path this editor represents. Default: "/main.typ" */
   filePath?: string;
+  /** Return all project files. The editor's content is included automatically under filePath. */
+  getFiles?: () => Record<string, string>;
   /** Delay in ms before linting fires after a document change. Default: 0. */
   delay?: number;
   /** Called after each lint pass with the resulting diagnostics. */
@@ -58,6 +60,7 @@ export function createTypstLinter(options: TypstLinterOptions = {}): Extension {
   const {
     service: externalService,
     filePath,
+    getFiles,
     delay = 0,
     onDiagnostics,
     ...serviceOptions
@@ -69,6 +72,7 @@ export function createTypstLinter(options: TypstLinterOptions = {}): Extension {
       new TypstWorkerPlugin({
         service,
         filePath,
+        getFiles,
         onDestroy: externalService ? undefined : () => service.destroy(),
         onDiagnostics,
       }),
