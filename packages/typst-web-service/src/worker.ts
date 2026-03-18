@@ -54,14 +54,18 @@ function parseRange(range: string): DiagnosticMessage["range"] | null {
   return { startLine: +m[1], startCol: +m[2], endLine: +m[3], endCol: +m[4] };
 }
 
-async function compile(
-  files: Record<string, string>,
-): Promise<{ diagnostics: DiagnosticMessage[]; vector?: Uint8Array }> {
+function addSources(files: Record<string, string>): void {
   if (!compiler) throw new Error("Compiler not initialized");
   for (const [path, source] of Object.entries(files)) {
     compiler.addSource(path, source);
   }
-  const result = await compiler.compile({
+}
+
+async function compile(
+  files: Record<string, string>,
+): Promise<{ diagnostics: DiagnosticMessage[]; vector?: Uint8Array }> {
+  addSources(files);
+  const result = await compiler!.compile({
     mainFilePath: MAIN_FILE,
     diagnostics: "full",
   });
@@ -125,11 +129,8 @@ const enqueueCompile = makeQueue<CompileRequest>(
 const enqueueRender = makeQueue<RenderRequest>(
   async (req) => {
     try {
-      if (!compiler) throw new Error("Compiler not initialized");
-      for (const [path, source] of Object.entries(req.files)) {
-        compiler.addSource(path, source);
-      }
-      const result = await compiler.compile({
+      addSources(req.files);
+      const result = await compiler!.compile({
         mainFilePath: MAIN_FILE,
         format: CompileFormatEnum.pdf,
         diagnostics: "none",

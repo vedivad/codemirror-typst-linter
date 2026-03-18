@@ -87,6 +87,10 @@ const DEFAULT_RENDERER_WASM_URL =
 
 const TIMEOUT = { INIT: 60_000, RENDER: 60_000, DESTROY: 5_000 } as const;
 
+function toFiles(source: string | Record<string, string>): Record<string, string> {
+  return typeof source === "string" ? { "/main.typ": source } : source;
+}
+
 /**
  * Manages a Typst compiler worker. Create one instance and share it across
  * all extensions (linter, autocomplete, preview, etc.).
@@ -163,7 +167,7 @@ export class TypstService {
   ): Promise<CompileResult> {
     await this.ready;
     const id = ++this.idCounter;
-    const files = typeof source === "string" ? { "/main.typ": source } : source;
+    const files = toFiles(source);
     const response = await workerRpc(this.worker, {
       type: "compile",
       id,
@@ -210,7 +214,7 @@ export class TypstService {
   ): Promise<Uint8Array> {
     await this.ready;
     const id = ++this.idCounter;
-    const files = typeof source === "string" ? { "/main.typ": source } : source;
+    const files = toFiles(source);
     const response = await workerRpc(
       this.worker,
       { type: "render", id, files },
