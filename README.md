@@ -34,11 +34,17 @@ Single file:
 ```ts
 import { TypstService } from "@vedivad/typst-web-service";
 
-const service = TypstService.create();
+const service = TypstService.create({
+  renderer: {
+    module: () => import("@myriaddreamin/typst-ts-renderer"),
+    onSvg: (svg) => {
+      document.querySelector("#preview")!.innerHTML = svg;
+    },
+  },
+});
 await service.ready;
 
-const result = await service.compile("= Hello, Typst");
-console.log(result.diagnostics);
+await service.compile("= Hello, Typst"); // renders SVG into #preview
 
 service.destroy();
 ```
