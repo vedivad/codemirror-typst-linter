@@ -1,4 +1,4 @@
-import type { Extension } from "@codemirror/state";
+import type { ChangeSpec, Extension } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
 import { keymap } from "@codemirror/view";
 import type { TypstFormatter } from "@vedivad/typst-web-service";
@@ -33,16 +33,41 @@ function handleError(error: unknown, onError?: (error: Error) => void): void {
   }
 }
 
+/**
+ * Compute minimal changes between two strings using common prefix/suffix.
+ * Returns ChangeSpec[] that only touch the differing region, preserving
+ * cursor position and undo granularity for unchanged parts.
+ */
+export function diffChanges(oldStr: string, newStr: string): ChangeSpec[] {
+  // Find common prefix
+  let from = 0;
+  const minLen = Math.min(oldStr.length, newStr.length);
+  while (from < minLen && oldStr[from] === newStr[from]) {
+    from++;
+  }
+
+  // Find common suffix (not overlapping with prefix)
+  let oldEnd = oldStr.length;
+  let newEnd = newStr.length;
+  while (oldEnd > from && newEnd > from && oldStr[oldEnd - 1] === newStr[newEnd - 1]) {
+    oldEnd--;
+    newEnd--;
+  }
+
+  if (from === oldEnd && from === newEnd) return [];
+
+  return [{ from, to: oldEnd, insert: newStr.slice(from, newEnd) }];
+}
+
 async function formatDocument(
   view: EditorView,
   formatter: TypstFormatter,
 ): Promise<void> {
   const doc = view.state.doc.toString();
   const formatted = await formatter.format(doc);
-  if (formatted !== doc) {
-    view.dispatch({
-      changes: { from: 0, to: doc.length, insert: formatted },
-    });
+  const changes = diffChanges(doc, formatted);
+  if (changes.length > 0) {
+    view.dispatch({ changes });
   }
 }
 

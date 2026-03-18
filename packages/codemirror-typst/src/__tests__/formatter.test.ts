@@ -1,7 +1,7 @@
 import { EditorState } from "@codemirror/state";
 import { describe, expect, it, vi } from "vitest";
 import type { TypstFormatter } from "@vedivad/typst-web-service";
-import { createTypstFormatter } from "../formatter.js";
+import { createTypstFormatter, diffChanges } from "../formatter.js";
 
 function mockFormatter(overrides: Partial<TypstFormatter> = {}): TypstFormatter {
   return {
@@ -38,6 +38,73 @@ function getKeyRun(ext: any, key: string): ((view: any) => boolean) | undefined 
   }
   return undefined;
 }
+
+describe("diffChanges", () => {
+  it("returns empty array for identical strings", () => {
+    expect(diffChanges("hello\nworld", "hello\nworld")).toEqual([]);
+  });
+
+  it("produces a single change for a modified middle line", () => {
+    const old = "aaa\nbbb\nccc";
+    const now = "aaa\nBBB\nccc";
+    const changes = diffChanges(old, now);
+    expect(changes).toEqual([{ from: 4, to: 7, insert: "BBB" }]);
+  });
+
+  it("handles added lines", () => {
+    const old = "aaa\nccc";
+    const now = "aaa\nbbb\nccc";
+    const changes = diffChanges(old, now);
+    expect(changes).toHaveLength(1);
+    // Applying the change to old should produce now
+    const result = old.slice(0, changes[0].from) + changes[0].insert + old.slice(changes[0].to as number);
+    expect(result).toBe(now);
+  });
+
+  it("handles removed lines", () => {
+    const old = "aaa\nbbb\nccc";
+    const now = "aaa\nccc";
+    const changes = diffChanges(old, now);
+    expect(changes).toHaveLength(1);
+    const result = old.slice(0, changes[0].from) + changes[0].insert + old.slice(changes[0].to as number);
+    expect(result).toBe(now);
+  });
+
+  it("handles change at the beginning", () => {
+    const old = "aaa\nbbb";
+    const now = "AAA\nbbb";
+    const changes = diffChanges(old, now);
+    expect(changes).toEqual([{ from: 0, to: 3, insert: "AAA" }]);
+  });
+
+  it("handles change at the end", () => {
+    const old = "aaa\nbbb";
+    const now = "aaa\nBBB";
+    const changes = diffChanges(old, now);
+    expect(changes).toEqual([{ from: 4, to: 7, insert: "BBB" }]);
+  });
+
+  it("handles complete replacement", () => {
+    const old = "aaa\nbbb";
+    const now = "xxx\nyyy";
+    const changes = diffChanges(old, now);
+    expect(changes).toHaveLength(1);
+    const result = old.slice(0, changes[0].from) + changes[0].insert + old.slice(changes[0].to as number);
+    expect(result).toBe(now);
+  });
+
+  it("handles empty to non-empty", () => {
+    const changes = diffChanges("", "hello");
+    expect(changes).toHaveLength(1);
+    expect(changes[0]).toEqual({ from: 0, to: 0, insert: "hello" });
+  });
+
+  it("handles non-empty to empty", () => {
+    const changes = diffChanges("hello", "");
+    expect(changes).toHaveLength(1);
+    expect(changes[0]).toEqual({ from: 0, to: 5, insert: "" });
+  });
+});
 
 describe("createTypstFormatter", () => {
   it("calls format on the whole document when no selection", async () => {
