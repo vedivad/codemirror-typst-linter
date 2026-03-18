@@ -1,13 +1,29 @@
 # typst-web
 
-Typst tooling for the web, split into small packages.
+Typst tooling for the web.
+
+## Features
+
+### `typst-web-service`
+
+- **Compilation** — compile Typst source to vector artifacts, SVG, or PDF via WASM in a Web Worker
+- **Diagnostics** — full diagnostic reporting (errors, warnings, info) with source ranges
+- **Multi-file projects** — compile across multiple files with `@preview/` package support
+- **SVG preview** — opt-in live SVG rendering via `@myriaddreamin/typst-ts-renderer`
+- **Code formatting** — format documents or ranges via [typstyle](https://github.com/typstyle-rs/typstyle)
+
+### `codemirror-typst`
+
+- **Syntax highlighting** — Shiki-based highlighting with configurable themes
+- **Inline diagnostics** — maps Typst diagnostics to CodeMirror lint markers with gutter icons
+- **Format keybinding** — Shift+Alt+F to format the document or current selection
 
 ## Packages
 
-| Package                      | Path                         | Purpose                                                               |
-| ---------------------------- | ---------------------------- | --------------------------------------------------------------------- |
-| `@vedivad/typst-web-service` | `packages/typst-web-service` | Core worker-backed Typst compile/render service                       |
-| `@vedivad/codemirror-typst`  | `packages/codemirror-typst`  | CodeMirror syntax highlighting and linter extension using the service |
+| Package                      | Path                         | Purpose                                                  |
+| ---------------------------- | ---------------------------- | -------------------------------------------------------- |
+| `@vedivad/typst-web-service` | `packages/typst-web-service` | Core worker-backed Typst compile/render service + formatter |
+| `@vedivad/codemirror-typst`  | `packages/codemirror-typst`  | CodeMirror extension for highlighting, linting, and formatting |
 
 ## Usage
 
@@ -36,6 +52,15 @@ const result = await service.compile({
 });
 ```
 
+Formatting (standalone, no editor required):
+
+```ts
+import { TypstFormatter } from "@vedivad/typst-web-service";
+
+const formatter = new TypstFormatter({ tab_spaces: 2, max_width: 80 });
+const formatted = await formatter.format("= Hello,   Typst");
+```
+
 ### `codemirror-typst`
 
 Single-file editor (zero-config):
@@ -43,7 +68,7 @@ Single-file editor (zero-config):
 ```ts
 import { EditorView, basicSetup } from "codemirror";
 import { EditorState } from "@codemirror/state";
-import { createTypstExtensions } from "@vedivad/codemirror-typst";
+import { createTypstExtensions, TypstFormatter } from "@vedivad/codemirror-typst";
 
 const typstExtensions = await createTypstExtensions({
   highlighting: {
@@ -58,6 +83,9 @@ const typstExtensions = await createTypstExtensions({
       },
     },
     onDiagnostics: (diagnostics) => console.log(diagnostics),
+  },
+  formatter: {
+    formatter: new TypstFormatter({ tab_spaces: 2, max_width: 80 }),
   },
 });
 
@@ -75,12 +103,18 @@ Multi-file editor (shared service + `getFiles`):
 ```ts
 import { EditorView, basicSetup } from "codemirror";
 import { EditorState } from "@codemirror/state";
-import { createTypstExtensions, TypstService } from "@vedivad/codemirror-typst";
+import {
+  createTypstExtensions,
+  TypstFormatter,
+  TypstService,
+} from "@vedivad/codemirror-typst";
 
 const files: Record<string, string> = {
   "/main.typ": "...",
   "/template.typ": "...",
 };
+
+const formatter = new TypstFormatter({ tab_spaces: 2, max_width: 80 });
 
 const service = TypstService.create({
   renderer: {
@@ -101,6 +135,7 @@ const typstExtensions = await createTypstExtensions({
     filePath: "/main.typ",
     getFiles: () => files,
   },
+  formatter: { formatter },
 });
 
 new EditorView({
@@ -149,9 +184,9 @@ The demo serves from `demo/` with a tabbed multi-file editor, diagnostics panel,
 
 ## Architecture summary
 
-- Compilation and rendering run inside a Web Worker (`typst-web-service/src/worker.ts`).
-- `TypstService` manages worker lifecycle and request/response flow. It accepts both single-file strings and multi-file `Record<string, string>` maps.
-- `codemirror-typst` consumes `TypstService` and maps Typst diagnostics to CodeMirror diagnostics. The `filePath` and `getFiles` options enable multi-file projects where each editor only shows diagnostics for its own file.
+- **`TypstService`** manages a Web Worker running the Typst WASM compiler. It handles compilation, rendering, and request coalescing. Accepts both single-file strings and multi-file `Record<string, string>` maps.
+- **`TypstFormatter`** is a standalone formatter powered by typstyle WASM. It runs on the main thread (typstyle is lightweight) and is independent of `TypstService`.
+- **`codemirror-typst`** provides CodeMirror 6 extensions that consume `TypstService` and `TypstFormatter`. The `filePath` and `getFiles` options enable multi-file projects where each editor only shows diagnostics for its own file.
 - Optional SVG preview is opt-in through renderer options; diagnostics-only usage does not require renderer initialization.
 
 ## License
