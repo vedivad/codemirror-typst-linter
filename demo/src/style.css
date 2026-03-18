@@ -111,16 +111,16 @@ header p {
 
 /* Diagnostics */
 .diagnostics {
-  width: 280px;
-  border-left: 1px solid #333;
+  border-top: 1px solid #333;
   overflow-y: auto;
-  padding: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  max-height: 120px;
   flex-shrink: 0;
 }
 
 .diagnostics h2 {
-  margin: 0 0 0.5rem;
-  font-size: 0.85rem;
+  margin: 0 0 0.4rem;
+  font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: #888;
@@ -144,8 +144,8 @@ header p {
   margin: 0;
   padding: 0;
   display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
+  flex-wrap: wrap;
+  gap: 0.3rem;
 }
 
 .diagnostic {
@@ -161,6 +161,12 @@ header p {
 .diagnostic .icon {
   flex-shrink: 0;
   line-height: 1.3;
+}
+.diagnostic .loc {
+  color: #666;
+  font-family: monospace;
+  font-size: 0.75rem;
+  flex-shrink: 0;
 }
 .diagnostic .message {
   line-height: 1.3;

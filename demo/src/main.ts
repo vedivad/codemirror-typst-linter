@@ -68,7 +68,8 @@ async function makeState(path: string, doc: string): Promise<EditorState> {
       filePath: path,
       getFiles: () => files,
       onDiagnostics: (d) => {
-        if (path === activeFile) updateDiagnostics(diagnosticsEl, d);
+        if (path === activeFile)
+          updateDiagnostics(diagnosticsEl, d, activeView?.state.doc);
       },
     },
     formatter: { formatter },
