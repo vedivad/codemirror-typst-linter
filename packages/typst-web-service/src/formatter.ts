@@ -28,7 +28,11 @@ let typstylePromise: Promise<TypstyleModule> | null = null;
 
 function getTypstyle(): Promise<TypstyleModule> {
   if (!typstylePromise) {
-    typstylePromise = import("@typstyle/typstyle-wasm-bundler");
+    typstylePromise = import("@typstyle/typstyle-wasm-bundler").catch((err) => {
+      // Reset so subsequent calls can retry
+      typstylePromise = null;
+      throw err;
+    });
   }
   return typstylePromise;
 }
@@ -47,8 +51,9 @@ export class TypstFormatter {
 
   constructor(config: FormatConfig = {}) {
     this.config = config;
-    // Eagerly start loading WASM so it's ready by first use
-    getTypstyle();
+    // Eagerly start loading WASM so it's ready by first use.
+    // Swallow preload errors — they'll surface on first format() call.
+    getTypstyle().catch(() => {});
   }
 
   /** Format an entire Typst source string. */

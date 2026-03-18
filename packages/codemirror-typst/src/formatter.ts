@@ -17,6 +17,20 @@ export interface TypstFormatterOptions {
    * Omit or set to `false` to disable.
    */
   formatOnSave?: boolean | ((content: string) => void);
+  /**
+   * Called when formatting fails (e.g. WASM failed to load or typstyle threw).
+   * If omitted, errors are logged to `console.warn`.
+   */
+  onError?: (error: Error) => void;
+}
+
+function handleError(error: unknown, onError?: (error: Error) => void): void {
+  const err = error instanceof Error ? error : new Error(String(error));
+  if (onError) {
+    onError(err);
+  } else {
+    console.warn("[typst-formatter]", err.message);
+  }
 }
 
 async function formatDocument(
@@ -35,17 +49,22 @@ async function formatDocument(
 async function formatAsync(
   view: EditorView,
   formatter: TypstFormatter,
+  onError?: (error: Error) => void,
 ): Promise<void> {
-  const { from, to } = view.state.selection.main;
+  try {
+    const { from, to } = view.state.selection.main;
 
-  if (from !== to) {
-    const doc = view.state.doc.toString();
-    const result = await formatter.formatRange(doc, from, to);
-    view.dispatch({
-      changes: { from: result.start, to: result.end, insert: result.text },
-    });
-  } else {
-    await formatDocument(view, formatter);
+    if (from !== to) {
+      const doc = view.state.doc.toString();
+      const result = await formatter.formatRange(doc, from, to);
+      view.dispatch({
+        changes: { from: result.start, to: result.end, insert: result.text },
+      });
+    } else {
+      await formatDocument(view, formatter);
+    }
+  } catch (error) {
+    handleError(error, onError);
   }
 }
 
@@ -53,10 +72,15 @@ async function formatAndSave(
   view: EditorView,
   formatter: TypstFormatter,
   onSave: boolean | ((content: string) => void),
+  onError?: (error: Error) => void,
 ): Promise<void> {
-  await formatDocument(view, formatter);
-  if (typeof onSave === "function") {
-    onSave(view.state.doc.toString());
+  try {
+    await formatDocument(view, formatter);
+    if (typeof onSave === "function") {
+      onSave(view.state.doc.toString());
+    }
+  } catch (error) {
+    handleError(error, onError);
   }
 }
 
@@ -72,13 +96,14 @@ async function formatAndSave(
 export function createTypstFormatter(
   options: TypstFormatterOptions,
 ): Extension {
-  const { formatter, keybinding = "Shift-Alt-f", formatOnSave } = options;
+  const { formatter, keybinding = "Shift-Alt-f", formatOnSave, onError } =
+    options;
 
   const keys = [
     {
       key: keybinding,
       run: (view: EditorView) => {
-        formatAsync(view, formatter);
+        formatAsync(view, formatter, onError);
         return true;
       },
     },
@@ -88,7 +113,7 @@ export function createTypstFormatter(
     keys.push({
       key: "Mod-s",
       run: (view: EditorView) => {
-        formatAndSave(view, formatter, formatOnSave);
+        formatAndSave(view, formatter, formatOnSave, onError);
         return true;
       },
     });
