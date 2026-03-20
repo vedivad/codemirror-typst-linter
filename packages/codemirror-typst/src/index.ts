@@ -1,10 +1,18 @@
+import { autocompletion } from "@codemirror/autocomplete";
 import { type Diagnostic, linter, lintGutter } from "@codemirror/lint";
 import type { Extension } from "@codemirror/state";
 import { ViewPlugin } from "@codemirror/view";
-import type { CompileResult, TypstAnalyzer, TypstCompiler } from "@vedivad/typst-web-service";
-import { lspToCMDiagnostic, toCMDiagnostic } from "./diagnostics.js";
+import {
+  AnalyzerSession,
+  type CompileResult,
+  type TypstAnalyzer,
+  type TypstCompiler,
+} from "@vedivad/typst-web-service";
+import { typstCompletionSource } from "./completion.js";
+import { toCMDiagnostic } from "./diagnostics.js";
 import type { TypstFormatterOptions } from "./formatter.js";
 import { createTypstFormatter } from "./formatter.js";
+import { createTypstHover } from "./hover.js";
 import { TypstLinterPlugin } from "./plugin.js";
 import type { TypstShikiHighlighting, TypstShikiOptions } from "./shiki.js";
 import {
@@ -15,7 +23,6 @@ import {
 export type {
   CompileResult,
   FormatConfig,
-  LspDiagnostic,
   TypstCompilerOptions,
   TypstRendererOptions,
 } from "@vedivad/typst-web-service";
@@ -35,7 +42,6 @@ export {
   createTypstFormatter,
   createTypstShikiExtension,
   createTypstShikiHighlighting,
-  lspToCMDiagnostic,
   toCMDiagnostic,
 };
 
@@ -46,27 +52,36 @@ export interface TypstExtensionsOptions {
   linter: TypstLinterOptions;
   /** Options for the code formatter. Omit to disable. */
   formatter?: TypstFormatterOptions;
+  /** Tinymist analyzer for autocompletion and hover. Omit to disable. */
+  analyzer?: TypstAnalyzerExtensionOptions;
 }
 
 export interface TypstLinterOptions {
   /** TypstCompiler instance to use for compilation. */
   compiler: TypstCompiler;
-  /** tinymist analyzer for richer LSP diagnostics. Optional. */
-  analyzer?: TypstAnalyzer;
   /** File path this editor represents. Default: "/main.typ" */
   filePath?: string;
   /** Return all project files. The editor's content is included automatically under filePath. */
   getFiles?: () => Record<string, string>;
   /** Delay in ms before linting fires after a document change. Default: 0. */
   delay?: number;
-  /** Optional root path for auto-created analyzer sessions. Default: "/project". */
-  projectRootPath?: string;
-  /** Optional entry path for auto-created analyzer sessions. Default: "/main.typ". */
-  projectEntryPath?: string;
   /** Called after each successful compile with the full result (e.g. for SVG preview). */
   onCompile?: (result: CompileResult) => void;
   /** Called after each lint pass with the resulting diagnostics. */
   onDiagnostics?: (diagnostics: Diagnostic[]) => void;
+}
+
+export interface TypstAnalyzerExtensionOptions {
+  /** TypstAnalyzer instance for autocompletion and hover. */
+  analyzer: TypstAnalyzer;
+  /** File path this editor represents. Default: "/main.typ" */
+  filePath?: string;
+  /** Return all project files. */
+  getFiles?: () => Record<string, string>;
+  /** Project root path for the analyzer session. Default: "/project". */
+  projectRootPath?: string;
+  /** Entry path for the analyzer session. Default: "/main.typ". */
+  projectEntryPath?: string;
 }
 
 /**
@@ -77,12 +92,9 @@ export interface TypstLinterOptions {
 export function createTypstLinter(options: TypstLinterOptions): Extension {
   const {
     compiler,
-    analyzer,
     filePath,
     getFiles,
     delay = 0,
-    projectRootPath,
-    projectEntryPath,
     onCompile,
     onDiagnostics,
   } = options;
@@ -91,11 +103,8 @@ export function createTypstLinter(options: TypstLinterOptions): Extension {
     () =>
       new TypstLinterPlugin({
         compiler,
-        analyzer,
         filePath,
         getFiles,
-        projectRootPath,
-        projectEntryPath,
         onCompile,
         onDiagnostics,
       }),
@@ -126,6 +135,27 @@ export async function createTypstExtensions(
 
   if (options.formatter) {
     extensions.push(createTypstFormatter(options.formatter));
+  }
+
+  if (options.analyzer) {
+    const { analyzer, filePath, getFiles, projectRootPath, projectEntryPath } =
+      options.analyzer;
+
+    const session = new AnalyzerSession({
+      analyzer,
+      rootPath: projectRootPath,
+      entryPath: projectEntryPath,
+    });
+
+    extensions.push(
+      autocompletion({
+        override: [
+          typstCompletionSource({ session, filePath, getFiles }),
+        ],
+      }),
+    );
+
+    extensions.push(createTypstHover({ session, filePath, getFiles }));
   }
 
   return extensions;

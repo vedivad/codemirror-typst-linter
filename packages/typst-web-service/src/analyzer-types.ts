@@ -13,7 +13,6 @@ export type AnalyzerRequest =
   | { type: "init"; id: number; wasmUrl: string }
   | { type: "didOpen"; id: number; uri: string; content: string }
   | { type: "didChange"; id: number; uri: string; version: number; content: string }
-  | { type: "didChangeFast"; id: number; uri: string; version: number; content: string }
   | { type: "completion"; id: number; uri: string; line: number; character: number }
   | { type: "hover"; id: number; uri: string; line: number; character: number }
   | { type: "destroy"; id: number };
@@ -21,8 +20,16 @@ export type AnalyzerRequest =
 export type AnalyzerResponse =
   | { type: "ready"; id: number }
   | { type: "ack"; id: number }
-  | { type: "diagnostics"; id: number; uri: string; diagnostics: LspDiagnostic[] }
   | { type: "completionResult"; id: number; result: unknown }
   | { type: "hoverResult"; id: number; result: unknown }
   | { type: "destroyed"; id: number }
   | { type: "error"; id: number; message: string };
+
+/** Unsolicited notification pushed from the worker whenever tinymist publishes diagnostics. */
+export interface AnalyzerDiagnosticEvent {
+  type: "diagnostics";
+  uri: string;
+  diagnostics: LspDiagnostic[];
+}
+
+export type AnalyzerMessage = AnalyzerResponse | AnalyzerDiagnosticEvent;

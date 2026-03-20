@@ -1,8 +1,7 @@
-import type { LspDiagnostic } from "./analyzer-types.js";
 import type { TypstAnalyzer } from "./analyzer.js";
 
 export interface AnalyzerSessionOptions {
-  analyzer: Pick<TypstAnalyzer, "ready" | "didOpen" | "didChange" | "didChangeFast">;
+  analyzer: Pick<TypstAnalyzer, "ready" | "didOpen" | "didChange" | "completion" | "hover">;
   /** Project root used to build stable in-memory analyzer URIs. Default: "/project". */
   rootPath?: string;
   /** Entry file path within the project. Synced last to ensure dependencies load first. Default: "/main.typ". */
@@ -18,20 +17,19 @@ function normalizeRoot(rootPath: string): string {
   return root === "/" ? "" : root.replace(/\/+$/, "");
 }
 
-const RETRY_DELAY_MS = 25;
-
 /**
- * Synchronizes an in-memory Typst project with a TypstAnalyzer and returns
- * diagnostics for the active file. Handles multi-file ordering and avoids
- * cross-file race conditions in tabbed editors.
+ * Synchronizes an in-memory Typst project with a TypstAnalyzer.
+ * Handles multi-file ordering and avoids cross-file race conditions.
+ *
+ * Diagnostics are not returned — they arrive via the analyzer's `onDiagnostics` callback.
  *
  *   const session = new AnalyzerSession({ analyzer });
- *   const diags = await session.syncAndDiagnose("/main.typ", source, files);
+ *   await session.sync("/main.typ", source, files);
  */
 export class AnalyzerSession {
   readonly ready: Promise<void>;
 
-  private readonly analyzer: Pick<TypstAnalyzer, "ready" | "didOpen" | "didChange" | "didChangeFast">;
+  private readonly analyzer: Pick<TypstAnalyzer, "ready" | "didOpen" | "didChange" | "completion" | "hover">;
   private readonly rootPath: string;
   private readonly entryPath: string;
   private readonly syncedFiles = new Map<string, string>();
@@ -44,42 +42,30 @@ export class AnalyzerSession {
     this.ready = this.analyzer.ready;
   }
 
-  async syncAndDiagnose(
+  /** Build a tinymist URI from a project-relative path. */
+  toUri(path: string): string {
+    return `untitled:${this.rootPath}${normalizePath(path)}`;
+  }
+
+  /**
+   * Sync all project files with the analyzer, then notify it of the active file change.
+   * Diagnostics will arrive asynchronously via the analyzer's `onDiagnostics` callback.
+   */
+  async sync(
     path: string,
     content: string,
     files: Record<string, string>,
-  ): Promise<LspDiagnostic[]> {
+  ): Promise<void> {
     const normalizedPath = normalizePath(path);
     const mergedFiles = { ...files, [normalizedPath]: content };
 
-    const changedPaths = await this.enqueue(async () => {
+    await this.enqueue(async () => {
       await this.ready;
-      return this.syncFiles(mergedFiles, normalizedPath);
+      await this.syncFiles(mergedFiles, normalizedPath);
+      // Notify the active file last — tinymist will publish diagnostics for it.
+      await this.analyzer.didChange(this.toUri(normalizedPath), mergedFiles[normalizedPath]);
+      this.syncedFiles.set(normalizedPath, mergedFiles[normalizedPath]);
     });
-
-    return this.enqueue(async () => {
-      const uri = this.toUri(normalizedPath);
-      const current = mergedFiles[normalizedPath];
-      const first = await this.analyzer.didChange(uri, current);
-      if (first.length > 0) return first;
-
-      let changedOtherFiles = false;
-      for (const changedPath of changedPaths) {
-        if (changedPath !== normalizedPath) {
-          changedOtherFiles = true;
-          break;
-        }
-      }
-      if (!changedOtherFiles) return first;
-
-      // tinymist notifications can lag behind a didChange round-trip after cross-file updates.
-      await new Promise<void>((r) => setTimeout(r, RETRY_DELAY_MS));
-      return this.analyzer.didChange(uri, current);
-    });
-  }
-
-  private toUri(path: string): string {
-    return `untitled:${this.rootPath}${normalizePath(path)}`;
   }
 
   private orderedPaths(files: Record<string, string>): string[] {
@@ -92,9 +78,7 @@ export class AnalyzerSession {
       });
   }
 
-  private async syncFiles(files: Record<string, string>, activePath: string): Promise<Set<string>> {
-    const changedPaths = new Set<string>();
-
+  private async syncFiles(files: Record<string, string>, activePath: string): Promise<void> {
     for (const path of this.orderedPaths(files)) {
       if (path === activePath) continue;
 
@@ -104,14 +88,12 @@ export class AnalyzerSession {
       if (prev == null) {
         await this.analyzer.didOpen(this.toUri(path), next);
         this.syncedFiles.set(path, next);
-        changedPaths.add(path);
         continue;
       }
 
       if (prev !== next) {
-        await this.analyzer.didChangeFast(this.toUri(path), next);
+        await this.analyzer.didChange(this.toUri(path), next);
         this.syncedFiles.set(path, next);
-        changedPaths.add(path);
       }
     }
 
@@ -120,8 +102,52 @@ export class AnalyzerSession {
         this.syncedFiles.delete(path);
       }
     }
+  }
 
-    return changedPaths;
+  /**
+   * Sync files and request completions at the given position.
+   * Returns the raw LSP CompletionList/CompletionItem[] from tinymist.
+   */
+  async completion(
+    path: string,
+    content: string,
+    files: Record<string, string>,
+    line: number,
+    character: number,
+  ): Promise<unknown> {
+    const normalizedPath = normalizePath(path);
+    const mergedFiles = { ...files, [normalizedPath]: content };
+
+    return this.enqueue(async () => {
+      await this.ready;
+      await this.syncFiles(mergedFiles, normalizedPath);
+      await this.analyzer.didChange(this.toUri(normalizedPath), mergedFiles[normalizedPath]);
+      this.syncedFiles.set(normalizedPath, mergedFiles[normalizedPath]);
+      return this.analyzer.completion(this.toUri(normalizedPath), line, character);
+    });
+  }
+
+  /**
+   * Sync files and request hover info at the given position.
+   * Returns the raw LSP Hover result from tinymist.
+   */
+  async hover(
+    path: string,
+    content: string,
+    files: Record<string, string>,
+    line: number,
+    character: number,
+  ): Promise<unknown> {
+    const normalizedPath = normalizePath(path);
+    const mergedFiles = { ...files, [normalizedPath]: content };
+
+    return this.enqueue(async () => {
+      await this.ready;
+      await this.syncFiles(mergedFiles, normalizedPath);
+      await this.analyzer.didChange(this.toUri(normalizedPath), mergedFiles[normalizedPath]);
+      this.syncedFiles.set(normalizedPath, mergedFiles[normalizedPath]);
+      return this.analyzer.hover(this.toUri(normalizedPath), line, character);
+    });
   }
 
   private enqueue<T>(task: () => Promise<T>): Promise<T> {

@@ -62,7 +62,6 @@ async function makeState(path: string, doc: string): Promise<EditorState> {
     },
     linter: {
       compiler,
-      analyzer,
       filePath: path,
       getFiles: () => files,
       onCompile: async (result) => {
@@ -77,6 +76,11 @@ async function makeState(path: string, doc: string): Promise<EditorState> {
       },
     },
     formatter: { instance: formatter, formatOnSave: true },
+    analyzer: {
+      analyzer,
+      filePath: path,
+      getFiles: () => files,
+    },
   });
 
   return EditorState.create({

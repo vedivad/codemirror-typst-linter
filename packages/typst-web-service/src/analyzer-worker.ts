@@ -1,13 +1,8 @@
 import init, { TinymistLanguageServer } from "tinymist-web";
-import type { AnalyzerRequest, AnalyzerResponse, LspDiagnostic } from "./analyzer-types.js";
+import type { AnalyzerDiagnosticEvent, AnalyzerRequest, AnalyzerResponse, LspDiagnostic } from "./analyzer-types.js";
 import { postError } from "./worker-utils.js";
 
 let server: TinymistLanguageServer | null = null;
-
-/** Pending diagnostic results keyed by normalized URI. */
-const pendingDiagnostics = new Map<string, LspDiagnostic[]>();
-/** Callbacks waiting for diagnostics keyed by normalized URI. */
-const diagnosticWaiters = new Map<string, (diags: LspDiagnostic[]) => void>();
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- events are opaque values from WASM
 const events: any[] = [];
@@ -25,43 +20,35 @@ function flushEvents(): void {
   }
 }
 
-/** Wait for diagnostics for a URI, resolving immediately if already available,
- *  or via a callback when publishDiagnostics fires. Falls back after a timeout. */
-function awaitDiagnostics(uri: string, timeoutMs = 500): Promise<LspDiagnostic[]> {
-  const key = normalizeUri(uri);
-  flushEvents();
-  if (pendingDiagnostics.has(key)) {
-    return Promise.resolve(pendingDiagnostics.get(key)!);
-  }
-  return new Promise<LspDiagnostic[]>((resolve) => {
-    const timer = setTimeout(() => {
-      diagnosticWaiters.delete(key);
-      resolve(pendingDiagnostics.get(key) ?? []);
-    }, timeoutMs);
-    diagnosticWaiters.set(key, (diags) => {
-      clearTimeout(timer);
-      diagnosticWaiters.delete(key);
-      resolve(diags);
-    });
-  });
-}
-
 async function initServer(wasmUrl: string): Promise<void> {
   await init(wasmUrl);
 
   server = new TinymistLanguageServer({
     sendEvent: (event: any): void => void events.push(event),
-    sendRequest({ id }: { id: number; method: string; params: unknown }): void {
-      // Server-initiated requests (e.g. workspace/configuration).
-      // Respond with null to unhandled requests.
-      server!.on_response({ id, result: null });
+    sendRequest({ id, method, params }: { id: number; method: string; params: unknown }): void {
+      console.log(`[analyzer-worker] sendRequest: ${method}`, params);
+      if (method === "workspace/configuration") {
+        const items = (params as { items: { section?: string }[] }).items;
+        const result = items.map(({ section }) => {
+          if (section === "tinymist.lint") return "onType";
+          return null;
+        });
+        console.log(`[analyzer-worker] responding to workspace/configuration:`, items.map(i => i.section), "->", result);
+        server!.on_response({ id, result });
+      } else {
+        server!.on_response({ id, result: null });
+      }
     },
     sendNotification: ({ method, params }: { method: string; params: unknown }): void => {
+      console.log(`[analyzer-worker] sendNotification: ${method}`, method === "textDocument/publishDiagnostics" ? `(${(params as any)?.diagnostics?.length} diags)` : "");
       if (method === "textDocument/publishDiagnostics") {
         const { uri, diagnostics } = params as { uri: string; diagnostics: LspDiagnostic[] };
-        const key = normalizeUri(uri);
-        pendingDiagnostics.set(key, diagnostics);
-        diagnosticWaiters.get(key)?.(diagnostics);
+        // Push diagnostics to main thread as an unsolicited notification (no id).
+        self.postMessage({
+          type: "diagnostics",
+          uri: normalizeUri(uri),
+          diagnostics,
+        } satisfies AnalyzerDiagnosticEvent);
       }
     },
     resolveFn: () => undefined,
@@ -125,33 +112,12 @@ self.onmessage = async (e: MessageEvent<AnalyzerRequest>) => {
 
   if (req.type === "didChange") {
     try {
-      pendingDiagnostics.delete(normalizeUri(req.uri));
-
-      server.on_notification("textDocument/didChange", {
-        textDocument: { uri: req.uri, version: req.version },
-        contentChanges: [{ text: req.content }],
-      });
-
-      const diagnostics = await awaitDiagnostics(req.uri);
-      self.postMessage({
-        type: "diagnostics",
-        id: req.id,
-        uri: req.uri,
-        diagnostics,
-      } satisfies AnalyzerResponse);
-    } catch (err) {
-      postError(req.id, err);
-    }
-    return;
-  }
-
-  if (req.type === "didChangeFast") {
-    try {
       server.on_notification("textDocument/didChange", {
         textDocument: { uri: req.uri, version: req.version },
         contentChanges: [{ text: req.content }],
       });
       flushEvents();
+      // Diagnostics will arrive asynchronously via publishDiagnostics → AnalyzerDiagnosticEvent.
       self.postMessage({ type: "ack", id: req.id } satisfies AnalyzerResponse);
     } catch (err) {
       postError(req.id, err);

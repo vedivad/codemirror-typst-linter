@@ -24,12 +24,14 @@
     "@vedivad/typst-web-service": "workspace:*"
   },
   "peerDependencies": {
+    "@codemirror/autocomplete": "^6",
     "@codemirror/lint": "^6",
     "@codemirror/state": "^6",
     "@codemirror/view": "^6",
     "shiki": "^4"
   },
   "devDependencies": {
+    "@codemirror/autocomplete": "^6.20.1",
     "@codemirror/lint": "^6.9.5",
     "@codemirror/state": "^6.5.4",
     "@codemirror/view": "^6.39.16",

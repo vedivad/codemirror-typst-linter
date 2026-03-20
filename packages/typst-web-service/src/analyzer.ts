@@ -1,7 +1,9 @@
-import type { AnalyzerRequest, AnalyzerResponse, LspDiagnostic } from "./analyzer-types.js";
+import type { AnalyzerDiagnosticEvent, AnalyzerMessage, AnalyzerRequest, AnalyzerResponse, LspDiagnostic } from "./analyzer-types.js";
 import { createAnalyzerWorker, destroyWorker, workerRpc } from "./rpc.js";
 
 export type { LspDiagnostic };
+
+export type DiagnosticsListener = (uri: string, diagnostics: LspDiagnostic[]) => void;
 
 export interface TypstAnalyzerOptions {
   /**
@@ -23,8 +25,12 @@ const TIMEOUT = { INIT: 120_000, REQUEST: 30_000, DESTROY: 5_000 } as const;
  * Manages a tinymist language server in a Web Worker. Provides LSP-based
  * diagnostics, completion, and hover for Typst documents.
  *
- *   new TypstAnalyzer({ wasmUrl: '...' })               // blob worker
- *   new TypstAnalyzer({ worker: myWorker, wasmUrl: '...' }) // explicit Worker (Vite)
+ * Diagnostics are push-based: call `didChange()` to notify the analyzer of
+ * content changes, and receive diagnostics via `onDiagnostics()` listeners
+ * whenever tinymist publishes them.
+ *
+ *   const analyzer = new TypstAnalyzer({ wasmUrl: '...' });
+ *   analyzer.onDiagnostics((uri, diags) => { ... });
  */
 export class TypstAnalyzer {
   readonly ready: Promise<void>;
@@ -32,15 +38,35 @@ export class TypstAnalyzer {
   private versionCounter = 0;
   private worker: Worker;
   private openedUris = new Set<string>();
+  private diagnosticsListeners = new Set<DiagnosticsListener>();
 
   constructor(options: TypstAnalyzerOptions) {
     this.worker = options.worker ?? createAnalyzerWorker();
     const absoluteWasmUrl = new URL(options.wasmUrl, globalThis.location?.href).href;
 
+    // Listen for unsolicited diagnostic push notifications from the worker.
+    this.worker.addEventListener("message", (e: MessageEvent<AnalyzerMessage>) => {
+      if (e.data.type === "diagnostics" && !("id" in e.data)) {
+        const event = e.data as AnalyzerDiagnosticEvent;
+        for (const listener of this.diagnosticsListeners) {
+          listener(event.uri, event.diagnostics);
+        }
+      }
+    });
+
     this.ready = this.rpc({ type: "init", id: ++this.idCounter, wasmUrl: absoluteWasmUrl }, TIMEOUT.INIT)
       .then((res) => {
         if (res.type === "error") throw new Error(`TypstAnalyzer init failed: ${res.message}`);
       });
+  }
+
+  /**
+   * Register a listener for push-based diagnostics.
+   * Returns an unsubscribe function.
+   */
+  onDiagnostics(listener: DiagnosticsListener): () => void {
+    this.diagnosticsListeners.add(listener);
+    return () => this.diagnosticsListeners.delete(listener);
   }
 
   private rpc(request: AnalyzerRequest, timeoutMs: number = TIMEOUT.REQUEST): Promise<AnalyzerResponse> {
@@ -54,18 +80,11 @@ export class TypstAnalyzer {
     this.openedUris.add(uri);
   }
 
-  async didChange(uri: string, content: string): Promise<LspDiagnostic[]> {
-    await this.ready;
-    if (!this.openedUris.has(uri)) await this.didOpen(uri, content);
-
-    const version = ++this.versionCounter;
-    const res = await this.rpc({ type: "didChange", id: ++this.idCounter, uri, version, content });
-    if (res.type === "error") throw new Error(res.message);
-    if (res.type === "diagnostics") return res.diagnostics;
-    return [];
-  }
-
-  async didChangeFast(uri: string, content: string): Promise<void> {
+  /**
+   * Notify the analyzer that a document has changed.
+   * Diagnostics will arrive asynchronously via `onDiagnostics()` listeners.
+   */
+  async didChange(uri: string, content: string): Promise<void> {
     await this.ready;
     if (!this.openedUris.has(uri)) {
       await this.didOpen(uri, content);
@@ -73,7 +92,7 @@ export class TypstAnalyzer {
     }
 
     const version = ++this.versionCounter;
-    const res = await this.rpc({ type: "didChangeFast", id: ++this.idCounter, uri, version, content });
+    const res = await this.rpc({ type: "didChange", id: ++this.idCounter, uri, version, content });
     if (res.type === "error") throw new Error(res.message);
   }
 
@@ -94,6 +113,7 @@ export class TypstAnalyzer {
   }
 
   destroy(): void {
+    this.diagnosticsListeners.clear();
     destroyWorker(this.worker, { type: "destroy" as const, id: ++this.idCounter }, TIMEOUT.DESTROY, "TypstAnalyzer");
   }
 }

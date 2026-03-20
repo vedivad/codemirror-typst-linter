@@ -12,6 +12,7 @@ install:
 dev: build
     rm -rf demo/node_modules/.vite
     cd demo && bun run dev & \
+    wait
 
 test:
     bunx vitest run
