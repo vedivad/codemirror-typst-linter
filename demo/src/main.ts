@@ -8,6 +8,10 @@ import {
   TypstRenderer,
 } from "@vedivad/codemirror-typst";
 import { basicSetup, EditorView } from "codemirror";
+import {
+  createHighlighter,
+  createJavaScriptRegexEngine,
+} from "shiki";
 import tinymistWasmUrl from "tinymist-web/pkg/tinymist_bg.wasm?url";
 import { updateDiagnostics } from "./diagnostics";
 
@@ -46,6 +50,16 @@ const compiler = new TypstCompiler();
 const renderer = new TypstRenderer();
 const analyzer = new TypstAnalyzer({ wasmUrl: tinymistWasmUrl });
 
+const highlighter = await createHighlighter({
+  langs: ["typst"],
+  themes: ["github-dark"],
+  engine: createJavaScriptRegexEngine(),
+});
+const highlightCode = (code: string, language: string): string => {
+  const lang = highlighter.getLoadedLanguages().includes(language) ? language : "typst";
+  return highlighter.codeToHtml(code, { lang, theme: "github-dark" });
+};
+
 const filePaths = Object.keys(files);
 
 // --- Editor states ---
@@ -80,6 +94,7 @@ async function makeState(path: string, doc: string): Promise<EditorState> {
       analyzer,
       filePath: path,
       getFiles: () => files,
+      highlightCode,
     },
   });
 

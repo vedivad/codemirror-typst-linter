@@ -23,6 +23,7 @@
         "@vedivad/codemirror-typst": "workspace:*",
         "@vedivad/typst-web-service": "workspace:*",
         "codemirror": "^6.0.2",
+        "shiki": "^4.0.2",
         "tinymist-web": "https://github.com/Myriad-Dreamin/tinymist/releases/download/v0.14.10/tinymist-web.tar.gz",
       },
       "devDependencies": {

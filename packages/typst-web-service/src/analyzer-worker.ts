@@ -25,22 +25,10 @@ async function initServer(wasmUrl: string): Promise<void> {
 
   server = new TinymistLanguageServer({
     sendEvent: (event: any): void => void events.push(event),
-    sendRequest({ id, method, params }: { id: number; method: string; params: unknown }): void {
-      console.log(`[analyzer-worker] sendRequest: ${method}`, params);
-      if (method === "workspace/configuration") {
-        const items = (params as { items: { section?: string }[] }).items;
-        const result = items.map(({ section }) => {
-          if (section === "tinymist.lint") return "onType";
-          return null;
-        });
-        console.log(`[analyzer-worker] responding to workspace/configuration:`, items.map(i => i.section), "->", result);
-        server!.on_response({ id, result });
-      } else {
-        server!.on_response({ id, result: null });
-      }
+    sendRequest({ id }: { id: number; method: string; params: unknown }): void {
+      server!.on_response({ id, result: null });
     },
     sendNotification: ({ method, params }: { method: string; params: unknown }): void => {
-      console.log(`[analyzer-worker] sendNotification: ${method}`, method === "textDocument/publishDiagnostics" ? `(${(params as any)?.diagnostics?.length} diags)` : "");
       if (method === "textDocument/publishDiagnostics") {
         const { uri, diagnostics } = params as { uri: string; diagnostics: LspDiagnostic[] };
         // Push diagnostics to main thread as an unsolicited notification (no id).

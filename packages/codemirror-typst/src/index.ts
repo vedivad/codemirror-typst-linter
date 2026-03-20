@@ -82,6 +82,8 @@ export interface TypstAnalyzerExtensionOptions {
   projectRootPath?: string;
   /** Entry path for the analyzer session. Default: "/main.typ". */
   projectEntryPath?: string;
+  /** Optional function to syntax-highlight code blocks in hover tooltips. Receives code and language, returns HTML. */
+  highlightCode?: (code: string, language: string) => string;
 }
 
 /**
@@ -138,7 +140,7 @@ export async function createTypstExtensions(
   }
 
   if (options.analyzer) {
-    const { analyzer, filePath, getFiles, projectRootPath, projectEntryPath } =
+    const { analyzer, filePath, getFiles, projectRootPath, projectEntryPath, highlightCode } =
       options.analyzer;
 
     const session = new AnalyzerSession({
@@ -155,7 +157,7 @@ export async function createTypstExtensions(
       }),
     );
 
-    extensions.push(createTypstHover({ session, filePath, getFiles }));
+    extensions.push(createTypstHover({ session, filePath, getFiles, highlightCode }));
   }
 
   return extensions;

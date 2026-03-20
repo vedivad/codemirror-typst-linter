@@ -9,6 +9,8 @@ export interface TypstHoverOptions {
   filePath?: string;
   /** Return all project files. The editor's content is included automatically under filePath. */
   getFiles?: () => Record<string, string>;
+  /** Optional function to syntax-highlight code blocks. Receives code and language, returns HTML string. */
+  highlightCode?: (code: string, language: string) => string;
 }
 
 interface LspHoverResult {
@@ -36,7 +38,7 @@ function extractHoverText(contents: LspHoverResult["contents"]): string {
  * Simple markdown-to-HTML converter for hover tooltips.
  * Handles: code blocks, inline code, headers, bold, italic, horizontal rules, paragraphs.
  */
-function renderMarkdown(md: string): string {
+function renderMarkdown(md: string, highlightCode?: (code: string, language: string) => string): string {
   const lines = md.split("\n");
   const htmlParts: string[] = [];
   let i = 0;
@@ -54,8 +56,12 @@ function renderMarkdown(md: string): string {
         i++;
       }
       i++; // skip closing ```
-      const escaped = escapeHtml(codeLines.join("\n"));
-      htmlParts.push(`<pre><code${lang ? ` class="language-${lang}"` : ""}>${escaped}</code></pre>`);
+      const code = codeLines.join("\n");
+      if (highlightCode && lang) {
+        htmlParts.push(highlightCode(code, lang));
+      } else {
+        htmlParts.push(`<pre><code${lang ? ` class="language-${lang}"` : ""}>${escapeHtml(code)}</code></pre>`);
+      }
       continue;
     }
 
@@ -108,6 +114,7 @@ function lspHoverToCM(
   state: EditorState,
   pos: number,
   result: unknown,
+  highlightCode?: (code: string, language: string) => string,
 ): Tooltip | null {
   const hover = result as LspHoverResult | null;
   if (!hover?.contents) return null;
@@ -127,7 +134,7 @@ function lspHoverToCM(
     create() {
       const dom = document.createElement("div");
       dom.className = "cm-typst-hover";
-      dom.innerHTML = renderMarkdown(text);
+      dom.innerHTML = renderMarkdown(text, highlightCode);
       return { dom };
     },
   };
@@ -156,7 +163,7 @@ export function createTypstHover(options: TypstHoverOptions): Extension {
         lspChar,
       );
       if (!result) return null;
-      return lspHoverToCM(view.state, pos, result);
+      return lspHoverToCM(view.state, pos, result, options.highlightCode);
     } catch {
       return null;
     }
