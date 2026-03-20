@@ -9,7 +9,7 @@ import {
   type TypstCompiler,
 } from "@vedivad/typst-web-service";
 import { typstCompletionSource } from "./completion.js";
-import { toCMDiagnostic } from "./diagnostics.js";
+import { lspToCMDiagnostic, toCMDiagnostic } from "./diagnostics.js";
 import type { TypstFormatterOptions } from "./formatter.js";
 import { createTypstFormatter } from "./formatter.js";
 import { createTypstHover } from "./hover.js";
@@ -42,59 +42,82 @@ export {
   createTypstFormatter,
   createTypstShikiExtension,
   createTypstShikiHighlighting,
+  lspToCMDiagnostic,
   toCMDiagnostic,
 };
 
+// ---------------------------------------------------------------------------
+// High-level API: createTypstExtensions
+// ---------------------------------------------------------------------------
+
 export interface TypstExtensionsOptions {
-  /** Options forwarded to the Typst Shiki highlighting factory. */
-  highlighting?: TypstShikiOptions;
-  /** Options forwarded to the Typst linter extension. */
-  linter: TypstLinterOptions;
-  /** Options for the code formatter. Omit to disable. */
+  /** File path this editor represents. Default: "/main.typ" */
+  filePath?: string;
+  /** Return all project files. The editor's content is included automatically under filePath. */
+  getFiles?: () => Record<string, string>;
+  /** Called after each lint pass with the resulting diagnostics. */
+  onDiagnostics?: (diagnostics: Diagnostic[]) => void;
+  /** Compiler config. Handles compilation for preview/PDF and fallback diagnostics. */
+  compiler: {
+    instance: TypstCompiler;
+    /** Called after each successful compile with the full result (e.g. for SVG preview). */
+    onCompile?: (result: CompileResult) => void;
+    /** Delay in ms before linting fires after a document change. Default: 0. */
+    delay?: number;
+  };
+  /** Tinymist analyzer for diagnostics, autocompletion, and hover. Omit to disable. */
+  analyzer?: {
+    instance: TypstAnalyzer;
+    /** Project root path for the analyzer session. Default: "/project". */
+    projectRootPath?: string;
+    /** Entry path for the analyzer session. Default: "/main.typ". */
+    projectEntryPath?: string;
+  };
+  /** Code formatter. Omit to disable. */
   formatter?: TypstFormatterOptions;
-  /** Tinymist analyzer for autocompletion and hover. Omit to disable. */
-  analyzer?: TypstAnalyzerExtensionOptions;
+  /** Syntax highlighting. Omit for defaults (github-dark). */
+  highlighting?: TypstShikiOptions;
 }
+
+// ---------------------------------------------------------------------------
+// Low-level API: createTypstLinter (unchanged for backward compat)
+// ---------------------------------------------------------------------------
 
 export interface TypstLinterOptions {
   /** TypstCompiler instance to use for compilation. */
   compiler: TypstCompiler;
+  /** tinymist analyzer for push-based diagnostics. Optional. */
+  analyzer?: TypstAnalyzer;
   /** File path this editor represents. Default: "/main.typ" */
   filePath?: string;
   /** Return all project files. The editor's content is included automatically under filePath. */
   getFiles?: () => Record<string, string>;
   /** Delay in ms before linting fires after a document change. Default: 0. */
   delay?: number;
+  /** Optional root path for auto-created analyzer sessions. Default: "/project". */
+  projectRootPath?: string;
+  /** Optional entry path for auto-created analyzer sessions. Default: "/main.typ". */
+  projectEntryPath?: string;
   /** Called after each successful compile with the full result (e.g. for SVG preview). */
   onCompile?: (result: CompileResult) => void;
   /** Called after each lint pass with the resulting diagnostics. */
   onDiagnostics?: (diagnostics: Diagnostic[]) => void;
 }
 
-export interface TypstAnalyzerExtensionOptions {
-  /** TypstAnalyzer instance for autocompletion and hover. */
-  analyzer: TypstAnalyzer;
-  /** File path this editor represents. Default: "/main.typ" */
-  filePath?: string;
-  /** Return all project files. */
-  getFiles?: () => Record<string, string>;
-  /** Project root path for the analyzer session. Default: "/project". */
-  projectRootPath?: string;
-  /** Entry path for the analyzer session. Default: "/main.typ". */
-  projectEntryPath?: string;
-}
-
 /**
- * Create a Typst linter extension for CodeMirror.
+ * Create a Typst linter extension for CodeMirror (low-level API).
  *
  *   createTypstLinter({ compiler, filePath: "/main.typ", onDiagnostics })
  */
 export function createTypstLinter(options: TypstLinterOptions): Extension {
   const {
     compiler,
+    analyzer,
     filePath,
     getFiles,
     delay = 0,
+    projectRootPath,
+    projectEntryPath,
     onCompile,
     onDiagnostics,
   } = options;
@@ -103,8 +126,11 @@ export function createTypstLinter(options: TypstLinterOptions): Extension {
     () =>
       new TypstLinterPlugin({
         compiler,
+        analyzer,
         filePath,
         getFiles,
+        projectRootPath,
+        projectEntryPath,
         onCompile,
         onDiagnostics,
       }),
@@ -125,12 +151,38 @@ export function createTypstLinter(options: TypstLinterOptions): Extension {
 
 /**
  * Create the default Typst extension set for CodeMirror.
+ *
+ * ```ts
+ * const extensions = await createTypstExtensions({
+ *   filePath: "/main.typ",
+ *   getFiles: () => files,
+ *   compiler: { instance: compiler, onCompile: (r) => { ... } },
+ *   analyzer: { instance: analyzer },
+ *   formatter: { instance: formatter, formatOnSave: true },
+ *   highlighting: { theme: "dark" },
+ *   onDiagnostics: (d) => { ... },
+ * });
+ * ```
  */
 export async function createTypstExtensions(
   options: TypstExtensionsOptions,
 ): Promise<Extension[]> {
+  const { filePath, getFiles, onDiagnostics } = options;
+
   const shiki = await createTypstShikiHighlighting(options.highlighting);
-  const linterExtension = createTypstLinter(options.linter);
+
+  const linterExtension = createTypstLinter({
+    compiler: options.compiler.instance,
+    analyzer: options.analyzer?.instance,
+    filePath,
+    getFiles,
+    delay: options.compiler.delay,
+    projectRootPath: options.analyzer?.projectRootPath,
+    projectEntryPath: options.analyzer?.projectEntryPath,
+    onCompile: options.compiler.onCompile,
+    onDiagnostics,
+  });
+
   const extensions: Extension[] = [shiki.extension, linterExtension];
 
   if (options.formatter) {
@@ -138,13 +190,10 @@ export async function createTypstExtensions(
   }
 
   if (options.analyzer) {
-    const { analyzer, filePath, getFiles, projectRootPath, projectEntryPath } =
-      options.analyzer;
-
     const session = new AnalyzerSession({
-      analyzer,
-      rootPath: projectRootPath,
-      entryPath: projectEntryPath,
+      analyzer: options.analyzer.instance,
+      rootPath: options.analyzer.projectRootPath,
+      entryPath: options.analyzer.projectEntryPath,
     });
 
     extensions.push(

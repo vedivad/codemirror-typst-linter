@@ -55,31 +55,23 @@ let activeView: EditorView | null = null;
 
 async function makeState(path: string, doc: string): Promise<EditorState> {
   const typstExtensions = await createTypstExtensions({
-    highlighting: {
-      themes: { light: "github-light", dark: "github-dark" },
-      defaultColor: "dark",
-      engine: "javascript",
-    },
-    linter: {
-      compiler,
-      filePath: path,
-      getFiles: () => files,
+    filePath: path,
+    getFiles: () => files,
+    compiler: {
+      instance: compiler,
       onCompile: async (result) => {
         if (result.vector) {
           const svg = await renderer.renderSvg(result.vector);
           previewEl.innerHTML = `<div class="svg-container">${svg}</div>`;
         }
       },
-      onDiagnostics: (d) => {
-        if (path === activeFile)
-          updateDiagnostics(diagnosticsEl, d, activeView?.state.doc);
-      },
     },
+    analyzer: { instance: analyzer },
     formatter: { instance: formatter, formatOnSave: true },
-    analyzer: {
-      analyzer,
-      filePath: path,
-      getFiles: () => files,
+    highlighting: { theme: "dark" },
+    onDiagnostics: (d) => {
+      if (path === activeFile)
+        updateDiagnostics(diagnosticsEl, d, activeView?.state.doc);
     },
   });
 

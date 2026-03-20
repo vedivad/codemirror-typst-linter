@@ -2,11 +2,13 @@ import type { Extension } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
 
 export interface TypstShikiOptions {
-  /** Map of theme aliases to Shiki theme names. */
+  /** Shorthand: "dark" uses github-dark, "light" uses github-light. */
+  theme?: "dark" | "light";
+  /** Full theme map. Overrides `theme` shorthand if both are set. */
   themes?: Record<string, string>;
   /** Initial theme alias to use. Must exist in `themes`. */
   defaultColor?: string;
-  /** Regex engine used by shiki. */
+  /** Regex engine used by shiki. Default: "javascript". */
   engine?: "javascript" | "oniguruma";
 }
 
@@ -27,19 +29,22 @@ export async function createTypstShikiHighlighting(
   } = await import("shiki");
   const { default: shiki } = await import("codemirror-shiki");
 
-  const themes = options.themes ?? {
-    light: "github-light",
-    dark: "github-dark",
-  };
+  let themes = options.themes;
+  if (!themes) {
+    if (options.theme === "light") {
+      themes = { light: "github-light" };
+    } else if (options.theme === "dark") {
+      themes = { dark: "github-dark" };
+    } else {
+      themes = { light: "github-light", dark: "github-dark" };
+    }
+  }
 
   const fallbackAlias = Object.keys(themes)[0] ?? "dark";
+  const defaultAlias = options.defaultColor ?? options.theme ?? (themes.dark ? "dark" : fallbackAlias);
   const resolveTheme = (alias?: string): string => {
     if (alias && themes[alias]) return themes[alias];
-    return (
-      themes[options.defaultColor ?? (themes.dark ? "dark" : fallbackAlias)] ??
-      themes[fallbackAlias] ??
-      "github-dark"
-    );
+    return themes[defaultAlias] ?? themes[fallbackAlias] ?? "github-dark";
   };
 
   const uniqueThemes = Array.from(new Set(Object.values(themes)));
