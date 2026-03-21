@@ -46,18 +46,46 @@ export {
   toCMDiagnostic,
 };
 
-const analyzerSessionCache = new WeakMap<TypstAnalyzer, AnalyzerSession>();
+const analyzerSessionCache = new WeakMap<
+  TypstAnalyzer,
+  Map<string, AnalyzerSession>
+>();
 const workspaceControllerCache = new WeakMap<
   TypstAnalyzer,
-  TypstWorkspaceController
+  WeakMap<TypstCompiler, Map<string, TypstWorkspaceController>>
 >();
+
+function normalizePath(path: string): string {
+  return path.startsWith("/") ? path : `/${path}`;
+}
+
+function normalizeRoot(rootPath: string): string {
+  const root = normalizePath(rootPath);
+  return root === "/" ? "" : root.replace(/\/+$/, "");
+}
+
+function sessionConfigKey(options: {
+  projectRootPath?: string;
+  projectEntryPath?: string;
+}): string {
+  const root = normalizeRoot(options.projectRootPath ?? "/project");
+  const entry = normalizePath(options.projectEntryPath ?? "/main.typ");
+  return `${root}|${entry}`;
+}
 
 function getOrCreateAnalyzerSession(options: {
   instance: TypstAnalyzer;
   projectRootPath?: string;
   projectEntryPath?: string;
 }): AnalyzerSession {
-  const cached = analyzerSessionCache.get(options.instance);
+  const key = sessionConfigKey(options);
+  let perAnalyzer = analyzerSessionCache.get(options.instance);
+  if (!perAnalyzer) {
+    perAnalyzer = new Map();
+    analyzerSessionCache.set(options.instance, perAnalyzer);
+  }
+
+  const cached = perAnalyzer.get(key);
   if (cached) return cached;
 
   const session = new AnalyzerSession({
@@ -65,7 +93,7 @@ function getOrCreateAnalyzerSession(options: {
     rootPath: options.projectRootPath,
     entryPath: options.projectEntryPath,
   });
-  analyzerSessionCache.set(options.instance, session);
+  perAnalyzer.set(key, session);
   return session;
 }
 
@@ -75,7 +103,21 @@ function getOrCreateWorkspaceController(options: {
   projectRootPath?: string;
   projectEntryPath?: string;
 }): TypstWorkspaceController {
-  const cached = workspaceControllerCache.get(options.analyzer);
+  const key = sessionConfigKey(options);
+
+  let perAnalyzer = workspaceControllerCache.get(options.analyzer);
+  if (!perAnalyzer) {
+    perAnalyzer = new WeakMap();
+    workspaceControllerCache.set(options.analyzer, perAnalyzer);
+  }
+
+  let perCompiler = perAnalyzer.get(options.compiler);
+  if (!perCompiler) {
+    perCompiler = new Map();
+    perAnalyzer.set(options.compiler, perCompiler);
+  }
+
+  const cached = perCompiler.get(key);
   if (cached) return cached;
 
   const session = getOrCreateAnalyzerSession({
@@ -91,7 +133,7 @@ function getOrCreateWorkspaceController(options: {
     projectEntryPath: options.projectEntryPath,
     session,
   });
-  workspaceControllerCache.set(options.analyzer, controller);
+  perCompiler.set(key, controller);
   return controller;
 }
 
