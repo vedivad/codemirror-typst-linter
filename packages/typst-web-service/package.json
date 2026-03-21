@@ -2,6 +2,11 @@
   "name": "@vedivad/typst-web-service",
   "version": "0.4.2",
   "description": "Editor-agnostic Typst compilation service running in a Web Worker",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vedivad/typst-web.git",
+    "directory": "packages/typst-web-service"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
