@@ -30,6 +30,11 @@ export interface TypstAnalyzerOptions {
 
 const TIMEOUT = { INIT: 120_000, REQUEST: 30_000, DESTROY: 5_000 } as const;
 
+function normalizeUntitledUri(uri: string): string {
+  if (!uri.startsWith("untitled:")) return uri;
+  return `untitled:${uri.slice("untitled:".length).replace(/^\/+/, "")}`;
+}
+
 /**
  * Manages a tinymist language server in a Web Worker. Provides LSP-based
  * diagnostics, completion, and hover for Typst documents.
@@ -48,6 +53,7 @@ export class TypstAnalyzer {
   private worker: Worker;
   private openedUris = new Set<string>();
   private diagnosticsListeners = new Set<DiagnosticsListener>();
+  private latestDiagnosticsByUri = new Map<string, LspDiagnostic[]>();
 
   constructor(options: TypstAnalyzerOptions) {
     this.worker = options.worker ?? createAnalyzerWorker();
@@ -60,8 +66,10 @@ export class TypstAnalyzer {
       (e: MessageEvent<AnalyzerMessage>) => {
         if (e.data.type === "diagnostics" && !("id" in e.data)) {
           const event = e.data as AnalyzerDiagnosticEvent;
+          const normalizedUri = normalizeUntitledUri(event.uri);
+          this.latestDiagnosticsByUri.set(normalizedUri, event.diagnostics);
           for (const listener of this.diagnosticsListeners) {
-            listener(event.uri, event.diagnostics);
+            listener(normalizedUri, event.diagnostics);
           }
         }
       },
@@ -83,6 +91,11 @@ export class TypstAnalyzer {
   onDiagnostics(listener: DiagnosticsListener): () => void {
     this.diagnosticsListeners.add(listener);
     return () => this.diagnosticsListeners.delete(listener);
+  }
+
+  /** Returns the latest pushed diagnostics for a URI, if available. */
+  getLatestDiagnostics(uri: string): LspDiagnostic[] | undefined {
+    return this.latestDiagnosticsByUri.get(normalizeUntitledUri(uri));
   }
 
   private rpc(
@@ -160,6 +173,7 @@ export class TypstAnalyzer {
 
   destroy(): void {
     this.diagnosticsListeners.clear();
+    this.latestDiagnosticsByUri.clear();
     destroyWorker(
       this.worker,
       { type: "destroy" as const, id: ++this.idCounter },

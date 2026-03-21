@@ -14,6 +14,7 @@ import type { TypstFormatterOptions } from "./formatter.js";
 import { createTypstFormatter } from "./formatter.js";
 import { createTypstHover } from "./hover.js";
 import { TypstPlugin } from "./plugin.js";
+import { TypstWorkspaceController } from "./workspace-controller.js";
 import type { TypstShikiHighlighting, TypstShikiOptions } from "./shiki.js";
 import {
   createTypstShikiExtension,
@@ -44,6 +45,55 @@ export {
   createTypstShikiHighlighting,
   toCMDiagnostic,
 };
+
+const analyzerSessionCache = new WeakMap<TypstAnalyzer, AnalyzerSession>();
+const workspaceControllerCache = new WeakMap<
+  TypstAnalyzer,
+  TypstWorkspaceController
+>();
+
+function getOrCreateAnalyzerSession(options: {
+  instance: TypstAnalyzer;
+  projectRootPath?: string;
+  projectEntryPath?: string;
+}): AnalyzerSession {
+  const cached = analyzerSessionCache.get(options.instance);
+  if (cached) return cached;
+
+  const session = new AnalyzerSession({
+    analyzer: options.instance,
+    rootPath: options.projectRootPath,
+    entryPath: options.projectEntryPath,
+  });
+  analyzerSessionCache.set(options.instance, session);
+  return session;
+}
+
+function getOrCreateWorkspaceController(options: {
+  analyzer: TypstAnalyzer;
+  compiler: TypstCompiler;
+  projectRootPath?: string;
+  projectEntryPath?: string;
+}): TypstWorkspaceController {
+  const cached = workspaceControllerCache.get(options.analyzer);
+  if (cached) return cached;
+
+  const session = getOrCreateAnalyzerSession({
+    instance: options.analyzer,
+    projectRootPath: options.projectRootPath,
+    projectEntryPath: options.projectEntryPath,
+  });
+
+  const controller = new TypstWorkspaceController({
+    analyzer: options.analyzer,
+    compiler: options.compiler,
+    projectRootPath: options.projectRootPath,
+    projectEntryPath: options.projectEntryPath,
+    session,
+  });
+  workspaceControllerCache.set(options.analyzer, controller);
+  return controller;
+}
 
 // ---------------------------------------------------------------------------
 // High-level API: createTypstExtensions
@@ -101,48 +151,56 @@ export async function createTypstExtensions(
   const shiki = await createTypstShikiHighlighting(options.highlighting);
 
   const delay = options.compiler.delay ?? 0;
+  const workspaceController = options.analyzer
+    ? getOrCreateWorkspaceController({
+      analyzer: options.analyzer.instance,
+      compiler: options.compiler.instance,
+      projectRootPath: options.analyzer.projectRootPath,
+      projectEntryPath: options.analyzer.projectEntryPath,
+    })
+    : undefined;
 
   const typstPlugin = ViewPlugin.define(
-    () =>
+    (view) =>
       new TypstPlugin({
         compiler: options.compiler.instance,
-        analyzer: options.analyzer?.instance,
+        workspaceController,
+        compileDelay: delay,
         filePath,
         getFiles,
-        projectRootPath: options.analyzer?.projectRootPath,
-        projectEntryPath: options.analyzer?.projectEntryPath,
         onCompile: options.compiler.onCompile,
         onDiagnostics,
-      }),
+      }, view),
     {},
-  );
-
-  const linterExtension = linter(
-    async (view) => {
-      const plugin = view.plugin(typstPlugin);
-      if (!plugin) return [];
-      return plugin.lint(view);
-    },
-    { delay },
   );
 
   const extensions: Extension[] = [
     shiki.extension,
     typstPlugin,
-    linterExtension,
     lintGutter(),
   ];
+
+  if (options.analyzer) {
+    // Use lint infrastructure for rendering while diagnostics are push-based.
+    extensions.push(linter(null, { delay }));
+  } else {
+    const linterExtension = linter(
+      async (view) => {
+        const plugin = view.plugin(typstPlugin) as TypstPlugin | null;
+        if (!plugin) return [];
+        return plugin.lint(view);
+      },
+      { delay },
+    );
+    extensions.push(linterExtension);
+  }
 
   if (options.formatter) {
     extensions.push(createTypstFormatter(options.formatter));
   }
 
   if (options.analyzer) {
-    const session = new AnalyzerSession({
-      analyzer: options.analyzer.instance,
-      rootPath: options.analyzer.projectRootPath,
-      entryPath: options.analyzer.projectEntryPath,
-    });
+    const session = workspaceController!.analyzerSession;
 
     extensions.push(
       autocompletion({

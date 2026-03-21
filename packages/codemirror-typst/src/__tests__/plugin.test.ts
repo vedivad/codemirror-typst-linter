@@ -122,4 +122,26 @@ describe("TypstPlugin", () => {
     expect(firstResult).toEqual([]);
     expect(secondResult).toHaveLength(1);
   });
+
+  it("returns empty diagnostics in analyzer mode", async () => {
+    const compiler = mockCompiler([
+      {
+        package: "",
+        path: "/main.typ",
+        severity: "Error",
+        range: { startLine: 0, startCol: 0, endLine: 0, endCol: 1 },
+        message: "compiler diagnostic",
+      },
+    ]);
+    const workspaceController = {
+      subscribe: vi.fn().mockReturnValue(() => { }),
+      syncAndCompile: vi.fn().mockResolvedValue(undefined),
+    } as any;
+
+    const plugin = new TypstPlugin({ compiler, workspaceController });
+    const result = await plugin.lint(mockView("x"));
+
+    expect(result).toEqual([]);
+    expect(compiler.compile).not.toHaveBeenCalled();
+  });
 });

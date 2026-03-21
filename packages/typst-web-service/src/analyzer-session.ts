@@ -71,12 +71,27 @@ export class AnalyzerSession {
       await this.ready;
       await this.syncFiles(mergedFiles, normalizedPath);
       // Notify the active file last — tinymist will publish diagnostics for it.
-      await this.analyzer.didChange(
-        this.toUri(normalizedPath),
-        mergedFiles[normalizedPath],
-      );
-      this.syncedFiles.set(normalizedPath, mergedFiles[normalizedPath]);
+      await this.syncActive(normalizedPath, mergedFiles[normalizedPath], true);
     });
+  }
+
+  private async syncActive(
+    path: string,
+    content: string,
+    forceDidChange: boolean,
+  ): Promise<void> {
+    const prev = this.syncedFiles.get(path);
+
+    if (prev == null) {
+      await this.analyzer.didOpen(this.toUri(path), content);
+      this.syncedFiles.set(path, content);
+      return;
+    }
+
+    if (forceDidChange || prev !== content) {
+      await this.analyzer.didChange(this.toUri(path), content);
+      this.syncedFiles.set(path, content);
+    }
   }
 
   private orderedPaths(files: Record<string, string>): string[] {
@@ -135,11 +150,7 @@ export class AnalyzerSession {
     return this.enqueue(async () => {
       await this.ready;
       await this.syncFiles(mergedFiles, normalizedPath);
-      await this.analyzer.didChange(
-        this.toUri(normalizedPath),
-        mergedFiles[normalizedPath],
-      );
-      this.syncedFiles.set(normalizedPath, mergedFiles[normalizedPath]);
+      await this.syncActive(normalizedPath, mergedFiles[normalizedPath], false);
       return this.analyzer.completion(
         this.toUri(normalizedPath),
         line,
@@ -165,11 +176,7 @@ export class AnalyzerSession {
     return this.enqueue(async () => {
       await this.ready;
       await this.syncFiles(mergedFiles, normalizedPath);
-      await this.analyzer.didChange(
-        this.toUri(normalizedPath),
-        mergedFiles[normalizedPath],
-      );
-      this.syncedFiles.set(normalizedPath, mergedFiles[normalizedPath]);
+      await this.syncActive(normalizedPath, mergedFiles[normalizedPath], false);
       return this.analyzer.hover(this.toUri(normalizedPath), line, character);
     });
   }
