@@ -82,7 +82,7 @@ URL.revokeObjectURL(url);
 
 #### Code formatting
 
-`TypstFormatter` is standalone — it does not require a compiler or Web Worker.
+`TypstFormatter` is standalone — it does not require a compiler or Web Worker. Requires a bundler that supports WASM imports (e.g. Vite, webpack).
 
 ```ts
 import { TypstFormatter } from "@vedivad/typst-web-service";
@@ -115,10 +115,16 @@ const result = await formatter.formatRange(source, selectionStart, selectionEnd)
 
 `TypstAnalyzer` runs a [tinymist](https://github.com/Myriad-Dreamin/tinymist) language server in a Web Worker for richer diagnostics, completion, and hover.
 
+The `wasmUrl` option is required — it must point to the `tinymist_bg.wasm` binary from the `tinymist-web` package, which is installed automatically as a transitive dependency. How you serve or reference it depends on your setup:
+
+- **Vite**: `import wasmUrl from "tinymist-web/pkg/tinymist_bg.wasm?url"`
+- **Static server**: copy or symlink `node_modules/tinymist-web/pkg/tinymist_bg.wasm` to your public directory and use the URL path
+- **Bun/Express**: add a route that serves the file from `node_modules`
+
 ```ts
 import { TypstAnalyzer } from "@vedivad/typst-web-service";
 
-const analyzer = new TypstAnalyzer({ wasmUrl: "/path/to/tinymist_bg.wasm" });
+const analyzer = new TypstAnalyzer({ wasmUrl: "/tinymist.wasm" });
 await analyzer.ready;
 
 analyzer.onDiagnostics((uri, diagnostics) => {
