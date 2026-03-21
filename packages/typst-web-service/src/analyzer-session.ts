@@ -11,14 +11,8 @@ export interface AnalyzerSessionOptions {
   entryPath?: string;
 }
 
-function normalizePath(path: string): string {
-  return path.startsWith("/") ? path : `/${path}`;
-}
 
-function normalizeRoot(rootPath: string): string {
-  const root = normalizePath(rootPath);
-  return root === "/" ? "" : root.replace(/\/+$/, "");
-}
+import { normalizePath, normalizeRoot } from "./uri.js";
 
 /**
  * Synchronizes an in-memory Typst project with a TypstAnalyzer.

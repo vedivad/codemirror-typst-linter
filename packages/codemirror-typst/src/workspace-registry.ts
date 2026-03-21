@@ -1,18 +1,11 @@
 import {
     AnalyzerSession,
+    normalizePath,
+    normalizeRoot,
     type TypstAnalyzer,
     type TypstCompiler,
 } from "@vedivad/typst-web-service";
 import { TypstWorkspaceController } from "./workspace-controller.js";
-
-function normalizePath(path: string): string {
-    return path.startsWith("/") ? path : `/${path}`;
-}
-
-function normalizeRoot(rootPath: string): string {
-    const root = normalizePath(rootPath);
-    return root === "/" ? "" : root.replace(/\/+$/, "");
-}
 
 function sessionConfigKey(options: {
     projectRootPath?: string;

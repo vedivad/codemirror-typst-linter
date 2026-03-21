@@ -3,7 +3,7 @@ export { TypstAnalyzer } from "./analyzer.js";
 export type { AnalyzerSessionOptions } from "./analyzer-session.js";
 export { AnalyzerSession } from "./analyzer-session.js";
 export type { LspDiagnostic } from "./analyzer-types.js";
-export { normalizeUntitledUri } from "./uri.js";
+export { normalizePath, normalizeRoot, normalizeUntitledUri } from "./uri.js";
 export type { CompileResult, TypstCompilerOptions } from "./compiler.js";
 export { TypstCompiler } from "./compiler.js";
 export type { FormatConfig, FormatRangeResult } from "./formatter.js";
