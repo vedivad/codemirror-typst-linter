@@ -14,12 +14,12 @@ import type { TypstFormatterOptions } from "./formatter.js";
 import { createTypstFormatter } from "./formatter.js";
 import { createTypstHover } from "./hover.js";
 import { TypstPlugin } from "./plugin.js";
-import { TypstWorkspaceController } from "./workspace-controller.js";
 import type { TypstShikiHighlighting, TypstShikiOptions } from "./shiki.js";
 import {
   createTypstShikiExtension,
   createTypstShikiHighlighting,
 } from "./shiki.js";
+import { WorkspaceRegistry } from "./workspace-registry.js";
 
 export type {
   CompileResult,
@@ -46,96 +46,7 @@ export {
   toCMDiagnostic,
 };
 
-const analyzerSessionCache = new WeakMap<
-  TypstAnalyzer,
-  Map<string, AnalyzerSession>
->();
-const workspaceControllerCache = new WeakMap<
-  TypstAnalyzer,
-  WeakMap<TypstCompiler, Map<string, TypstWorkspaceController>>
->();
-
-function normalizePath(path: string): string {
-  return path.startsWith("/") ? path : `/${path}`;
-}
-
-function normalizeRoot(rootPath: string): string {
-  const root = normalizePath(rootPath);
-  return root === "/" ? "" : root.replace(/\/+$/, "");
-}
-
-function sessionConfigKey(options: {
-  projectRootPath?: string;
-  projectEntryPath?: string;
-}): string {
-  const root = normalizeRoot(options.projectRootPath ?? "/project");
-  const entry = normalizePath(options.projectEntryPath ?? "/main.typ");
-  return `${root}|${entry}`;
-}
-
-function getOrCreateAnalyzerSession(options: {
-  instance: TypstAnalyzer;
-  projectRootPath?: string;
-  projectEntryPath?: string;
-}): AnalyzerSession {
-  const key = sessionConfigKey(options);
-  let perAnalyzer = analyzerSessionCache.get(options.instance);
-  if (!perAnalyzer) {
-    perAnalyzer = new Map();
-    analyzerSessionCache.set(options.instance, perAnalyzer);
-  }
-
-  const cached = perAnalyzer.get(key);
-  if (cached) return cached;
-
-  const session = new AnalyzerSession({
-    analyzer: options.instance,
-    rootPath: options.projectRootPath,
-    entryPath: options.projectEntryPath,
-  });
-  perAnalyzer.set(key, session);
-  return session;
-}
-
-function getOrCreateWorkspaceController(options: {
-  analyzer: TypstAnalyzer;
-  compiler: TypstCompiler;
-  projectRootPath?: string;
-  projectEntryPath?: string;
-}): TypstWorkspaceController {
-  const key = sessionConfigKey(options);
-
-  let perAnalyzer = workspaceControllerCache.get(options.analyzer);
-  if (!perAnalyzer) {
-    perAnalyzer = new WeakMap();
-    workspaceControllerCache.set(options.analyzer, perAnalyzer);
-  }
-
-  let perCompiler = perAnalyzer.get(options.compiler);
-  if (!perCompiler) {
-    perCompiler = new Map();
-    perAnalyzer.set(options.compiler, perCompiler);
-  }
-
-  const cached = perCompiler.get(key);
-  if (cached) return cached;
-
-  const session = getOrCreateAnalyzerSession({
-    instance: options.analyzer,
-    projectRootPath: options.projectRootPath,
-    projectEntryPath: options.projectEntryPath,
-  });
-
-  const controller = new TypstWorkspaceController({
-    analyzer: options.analyzer,
-    compiler: options.compiler,
-    projectRootPath: options.projectRootPath,
-    projectEntryPath: options.projectEntryPath,
-    session,
-  });
-  perCompiler.set(key, controller);
-  return controller;
-}
+const workspaceRegistry = new WorkspaceRegistry();
 
 // ---------------------------------------------------------------------------
 // High-level API: createTypstExtensions
@@ -194,7 +105,7 @@ export async function createTypstExtensions(
 
   const delay = options.compiler.delay ?? 0;
   const workspaceController = options.analyzer
-    ? getOrCreateWorkspaceController({
+    ? workspaceRegistry.getController({
       analyzer: options.analyzer.instance,
       compiler: options.compiler.instance,
       projectRootPath: options.analyzer.projectRootPath,
