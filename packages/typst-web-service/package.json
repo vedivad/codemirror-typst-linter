@@ -1,6 +1,6 @@
 {
   "name": "@vedivad/typst-web-service",
-  "version": "0.4.5",
+  "version": "0.5.1",
   "description": "Editor-agnostic Typst compilation service running in a Web Worker",
   "repository": {
     "type": "git",

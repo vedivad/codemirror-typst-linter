@@ -29,7 +29,6 @@ let typstylePromise: Promise<TypstyleModule> | null = null;
 function getTypstyle(): Promise<TypstyleModule> {
   if (!typstylePromise) {
     typstylePromise = import("@typstyle/typstyle-wasm-bundler").catch((err) => {
-      // Reset so subsequent calls can retry
       typstylePromise = null;
       throw err;
     });
@@ -42,6 +41,7 @@ function getTypstyle(): Promise<TypstyleModule> {
  *
  * Runs on the main thread — typstyle is lightweight and fast.
  * The WASM module is loaded lazily on first format call.
+ * Requires a bundler that supports WASM imports (e.g. Vite, webpack).
  *
  *   const formatter = new TypstFormatter({ tab_spaces: 2, max_width: 80 });
  *   const formatted = await formatter.format(source);

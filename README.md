@@ -1,124 +1,198 @@
 # typst-web
 
-## Features
+Typst editor components for the web — CodeMirror 6 extensions with compilation, LSP analysis, formatting, and live preview.
 
-### `typst-web-service`
+## Quick start
 
-- **Compilation** — compile Typst source to vector artifacts, SVG, or PDF via WASM in a Web Worker
-- **Diagnostics** — full diagnostic reporting (errors, warnings, info) with source ranges
-- **LSP analysis** — optional [tinymist](https://github.com/Myriad-Dreamin/tinymist) integration for diagnostics, completion, and hover
-- **Multi-file projects** — compile across multiple files with `@preview/` package support
-- **SVG preview** — live SVG rendering via `@myriaddreamin/typst-ts-renderer`
-- **PDF export** — render to PDF and download
-- **Code formatting** — format documents or ranges via [typstyle](https://github.com/typstyle-rs/typstyle)
+```bash
+npm install @vedivad/codemirror-typst
+```
 
-### `codemirror-typst`
+> `@vedivad/codemirror-typst` re-exports everything from `@vedivad/typst-web-service` — you only need one dependency.
 
-- **Syntax highlighting** — Shiki-based highlighting with configurable themes
-- **Inline diagnostics** — single diagnostics owner per mode: compiler linter (no analyzer) or tinymist push (analyzer mode)
-- **Format keybinding** — Shift+Alt+F to format the document or current selection
-- **Format on save** — optional Ctrl+S / Cmd+S formatting with a save callback hook
+### Prerequisites
+
+- A bundler with WASM support (e.g. [Vite](https://vite.dev) + [`vite-plugin-wasm`](https://github.com/nicolo-ribaudo/vite-plugin-wasm), or webpack with [`wasm-pack-plugin`](https://github.com/nicolo-ribaudo/vite-plugin-wasm))
+- The formatter (`TypstFormatter`) requires the bundler to handle static WASM imports from `@typstyle/typstyle-wasm-bundler`
+- The analyzer (`TypstAnalyzer`) requires a URL to the tinymist WASM binary (see [LSP analysis](#lsp-analysis-with-tinymist))
+
+### Minimal editor
+
+```ts
+import { EditorView, basicSetup } from "codemirror";
+import { EditorState } from "@codemirror/state";
+import { createTypstExtensions, TypstCompiler } from "@vedivad/codemirror-typst";
+
+const compiler = new TypstCompiler();
+
+const typstExtensions = await createTypstExtensions({
+  compiler: { instance: compiler },
+  highlighting: { theme: "dark" },
+});
+
+new EditorView({
+  parent: document.querySelector("#app")!,
+  state: EditorState.create({
+    doc: "= Hello, Typst!",
+    extensions: [basicSetup, ...typstExtensions],
+  }),
+});
+```
+
+This gives you syntax highlighting, diagnostics, and compilation out of the box — no URLs or config needed.
+
+### Full-featured editor
+
+Add formatting, LSP analysis (autocompletion, hover, push diagnostics), and live SVG preview:
+
+For multi-tab editors, create a shared `AnalyzerSession` and pass it to each editor. This avoids redundant file synchronization and keeps diagnostic subscriptions alive across tab switches.
+
+```ts
+import {
+  AnalyzerSession,
+  createTypstExtensions,
+  TypstCompiler,
+  TypstRenderer,
+  TypstFormatter,
+  TypstAnalyzer,
+} from "@vedivad/codemirror-typst";
+import tinymistWasmUrl from "tinymist-web/pkg/tinymist_bg.wasm?url"; // Vite
+
+const compiler = new TypstCompiler();
+const renderer = new TypstRenderer();
+const formatter = new TypstFormatter({ tab_spaces: 2, max_width: 80 });
+const analyzer = new TypstAnalyzer({ wasmUrl: tinymistWasmUrl });
+
+// Create extensions for each tab, sharing the session
+const typstExtensions = await createTypstExtensions({
+  compiler: {
+    instance: compiler,
+    onCompile: async (result) => {
+      if (result.vector) {
+        const svg = await renderer.renderSvg(result.vector);
+        document.querySelector("#preview")!.innerHTML = svg;
+      }
+    },
+    delay: 300,
+  },
+  analyzer: { instance: analyzer, session },
+  formatter: { instance: formatter, formatOnSave: true },
+  highlighting: { theme: "dark" },
+});
+```
+
+### Multi-file editor
+
+For multi-file projects, each editor declares its `filePath` and provides a `getFiles` getter. Share a single `AnalyzerSession` across tabs to avoid redundant file synchronization:
+
+```ts
+import { AnalyzerSession, createTypstExtensions, TypstAnalyzer, TypstCompiler } from "@vedivad/codemirror-typst";
+import tinymistWasmUrl from "tinymist-web/pkg/tinymist_bg.wasm?url";
+
+const compiler = new TypstCompiler();
+const analyzer = new TypstAnalyzer({ wasmUrl: tinymistWasmUrl });
+const session = new AnalyzerSession({ analyzer });
+
+const files: Record<string, string> = {
+  "/main.typ": "...",
+  "/template.typ": "...",
+};
+
+// Create extensions for each tab, sharing the session
+const extensions = await createTypstExtensions({
+  filePath: "/main.typ",
+  getFiles: () => files,
+  compiler: { instance: compiler },
+  analyzer: { instance: analyzer, session },
+  highlighting: { theme: "dark" },
+});
+```
 
 ## Packages
 
-| Package                                                    | Purpose                                                             |
-| ---------------------------------------------------------- | ------------------------------------------------------------------- |
-| [`@vedivad/typst-web-service`](packages/typst-web-service) | Core worker-backed Typst compile/render/analyze service + formatter |
-| [`@vedivad/codemirror-typst`](packages/codemirror-typst)   | CodeMirror 6 extension for highlighting, linting, and formatting    |
+| Package | Purpose |
+|---|---|
+| [`@vedivad/codemirror-typst`](packages/codemirror-typst) | CodeMirror 6 extensions — highlighting, diagnostics, completion, hover, formatting |
+| [`@vedivad/typst-web-service`](packages/typst-web-service) | Editor-agnostic Typst services — compile, render, analyze, format via WASM |
 
-## Usage
-
-### `typst-web-service`
+## Service classes
 
 Four independent classes, each wrapping a WASM module with lazy loading:
 
-| Class            | Runs on     | Purpose                                                        |
-| ---------------- | ----------- | -------------------------------------------------------------- |
-| `TypstCompiler`  | Web Worker  | `compile()` → diagnostics + vector, `compilePdf()` → PDF bytes |
-| `TypstRenderer`  | Main thread | `renderSvg(vector)` → SVG string                               |
-| `TypstFormatter` | Main thread | `format(source)`, `formatRange(source, start, end)`            |
-| `TypstAnalyzer`  | Web Worker  | LSP diagnostics, completion, hover via tinymist                |
+| Class | Runs on | WASM loading | Purpose |
+|---|---|---|---|
+| `TypstCompiler` | Web Worker | CDN (automatic) | `compile()` → diagnostics + vector, `compilePdf()` → PDF |
+| `TypstRenderer` | Main thread | CDN (automatic) | `renderSvg(vector)` → SVG string |
+| `TypstFormatter` | Main thread | Bundler (static import) | `format(source)`, `formatRange(source, start, end)` |
+| `TypstAnalyzer` | Web Worker | User-provided `wasmUrl` | LSP diagnostics, completion, hover via tinymist |
 
-#### Compile and render SVG
+Each class is independent — import only what you need.
+
+### Compilation
 
 ```ts
-import { TypstCompiler, TypstRenderer } from "@vedivad/typst-web-service";
+import { TypstCompiler, TypstRenderer } from "@vedivad/codemirror-typst";
 
 const compiler = new TypstCompiler();
 const renderer = new TypstRenderer();
 
+// Single file
 const result = await compiler.compile("= Hello, Typst");
 if (result.vector) {
   const svg = await renderer.renderSvg(result.vector);
   document.querySelector("#preview")!.innerHTML = svg;
 }
 
-compiler.destroy();
-```
-
-#### Multi-file compilation
-
-```ts
+// Multi-file
 const result = await compiler.compile({
   "/main.typ": '#import "template.typ": greet\n#greet("World")',
   "/template.typ": "#let greet(name) = [Hello, #name!]",
 });
-```
 
-#### PDF export
-
-```ts
+// PDF export
 const pdf = await compiler.compilePdf("= Hello, Typst");
 const blob = new Blob([pdf.slice()], { type: "application/pdf" });
-const url = URL.createObjectURL(blob);
 
-const a = document.createElement("a");
-a.href = url;
-a.download = "output.pdf";
-a.click();
-
-URL.revokeObjectURL(url);
+compiler.destroy();
 ```
 
-#### Code formatting
+### Formatting
 
-`TypstFormatter` is standalone — it does not require a compiler or Web Worker.
+Requires a bundler that supports WASM imports (e.g. Vite + `vite-plugin-wasm`).
 
 ```ts
-import { TypstFormatter } from "@vedivad/typst-web-service";
+import { TypstFormatter } from "@vedivad/codemirror-typst";
 
 const formatter = new TypstFormatter({ tab_spaces: 2, max_width: 80 });
-
-// Format an entire document
 const formatted = await formatter.format(source);
-
-// Format a selection (indices are UTF-16 code units, matching JS string indexing)
-const result = await formatter.formatRange(source, selectionStart, selectionEnd);
-// result.text — the formatted text
-// result.start, result.end — the actual range that was formatted
+const rangeResult = await formatter.formatRange(source, start, end);
 ```
 
-#### Format configuration
+Config options ([typstyle docs](https://github.com/typstyle-rs/typstyle)):
 
-`TypstFormatter` accepts any subset of [typstyle's config](https://github.com/typstyle-rs/typstyle):
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `tab_spaces` | `number` | `2` | Spaces per indentation level |
+| `max_width` | `number` | `80` | Maximum line width |
+| `blank_lines_upper_bound` | `number` | — | Max consecutive blank lines |
+| `collapse_markup_spaces` | `boolean` | — | Collapse whitespace in markup |
+| `reorder_import_items` | `boolean` | — | Sort import items alphabetically |
+| `wrap_text` | `boolean` | — | Wrap text to fit within `max_width` |
 
-| Option                    | Type      | Default | Description                                     |
-| ------------------------- | --------- | ------- | ----------------------------------------------- |
-| `tab_spaces`              | `number`  | `2`     | Spaces per indentation level                    |
-| `max_width`               | `number`  | `80`    | Maximum line width                              |
-| `blank_lines_upper_bound` | `number`  | —       | Max consecutive blank lines                     |
-| `collapse_markup_spaces`  | `boolean` | —       | Collapse whitespace in markup to a single space |
-| `reorder_import_items`    | `boolean` | —       | Sort import items alphabetically                |
-| `wrap_text`               | `boolean` | —       | Wrap text to fit within `max_width`             |
+### LSP analysis with tinymist
 
-#### LSP analysis with tinymist
+`TypstAnalyzer` runs a [tinymist](https://github.com/Myriad-Dreamin/tinymist) language server in a Web Worker. The `wasmUrl` option is required — it must point to the `tinymist_bg.wasm` binary from the `tinymist-web` package (installed automatically as a transitive dependency).
 
-`TypstAnalyzer` runs a [tinymist](https://github.com/Myriad-Dreamin/tinymist) language server in a Web Worker for richer diagnostics, completion, and hover.
+How you reference the WASM depends on your bundler:
+
+- **Vite**: `import wasmUrl from "tinymist-web/pkg/tinymist_bg.wasm?url"`
+- **Static server**: copy `node_modules/tinymist-web/pkg/tinymist_bg.wasm` to your public directory
 
 ```ts
-import { TypstAnalyzer } from "@vedivad/typst-web-service";
+import { TypstAnalyzer } from "@vedivad/codemirror-typst";
+import tinymistWasmUrl from "tinymist-web/pkg/tinymist_bg.wasm?url";
 
-const analyzer = new TypstAnalyzer({ wasmUrl: "/path/to/tinymist_bg.wasm" });
+const analyzer = new TypstAnalyzer({ wasmUrl: tinymistWasmUrl });
 await analyzer.ready;
 
 analyzer.onDiagnostics((uri, diagnostics) => {
@@ -132,105 +206,7 @@ const hover = await analyzer.hover("untitled:project/main.typ", line, character)
 analyzer.destroy();
 ```
 
-For multi-file projects, `AnalyzerSession` handles file synchronization and ordering:
-
-```ts
-import { TypstAnalyzer, AnalyzerSession } from "@vedivad/typst-web-service";
-
-const analyzer = new TypstAnalyzer({ wasmUrl: "/path/to/tinymist_bg.wasm" });
-const session = new AnalyzerSession({ analyzer, entryPath: "/main.typ" });
-
-await session.sync("/main.typ", source, files);
-```
-
-### `codemirror-typst`
-
-#### Single-file editor
-
-```ts
-import { EditorView, basicSetup } from "codemirror";
-import { EditorState } from "@codemirror/state";
-import {
-  createTypstExtensions,
-  TypstCompiler,
-  TypstFormatter,
-} from "@vedivad/codemirror-typst";
-
-const compiler = new TypstCompiler();
-
-const typstExtensions = await createTypstExtensions({
-  compiler: { instance: compiler },
-  highlighting: { theme: "dark" },
-  formatter: {
-    instance: new TypstFormatter({ tab_spaces: 2, max_width: 80 }),
-  },
-  onDiagnostics: (diagnostics) => console.log(diagnostics),
-});
-
-new EditorView({
-  parent: document.querySelector("#app")!,
-  state: EditorState.create({
-    doc: "= Typst",
-    extensions: [basicSetup, ...typstExtensions],
-  }),
-});
-```
-
-#### Multi-file editor with tinymist
-
-For multi-file projects, share a single `TypstCompiler` across editors. Each editor declares its `filePath` and provides a `getFiles` getter. Adding a `TypstAnalyzer` enables autocompletion, hover, and push-based diagnostics.
-
-For multi-tab editors, create a shared `AnalyzerSession` and pass it to each editor. This avoids redundant file synchronization and keeps diagnostic subscriptions alive across tab switches.
-
-```ts
-import {
-  AnalyzerSession,
-  createTypstExtensions,
-  TypstAnalyzer,
-  TypstCompiler,
-  TypstFormatter,
-  TypstRenderer,
-} from "@vedivad/codemirror-typst";
-
-const compiler = new TypstCompiler();
-const renderer = new TypstRenderer();
-const analyzer = new TypstAnalyzer({ wasmUrl: "/path/to/tinymist_bg.wasm" });
-const formatter = new TypstFormatter({ tab_spaces: 2, max_width: 80 });
-const session = new AnalyzerSession({ analyzer });
-
-const files: Record<string, string> = {
-  "/main.typ": "...",
-  "/template.typ": "...",
-};
-
-// Create extensions for each tab, sharing the session
-const typstExtensions = await createTypstExtensions({
-  filePath: "/main.typ",
-  getFiles: () => files,
-  compiler: {
-    instance: compiler,
-    onCompile: async (result) => {
-      if (result.vector) {
-        const svg = await renderer.renderSvg(result.vector);
-        document.querySelector("#preview")!.innerHTML = svg;
-      }
-    },
-  },
-  analyzer: { instance: analyzer, session },
-  formatter: { instance: formatter, formatOnSave: true },
-  highlighting: { theme: "dark" },
-  onDiagnostics: (d) => console.log(d),
-});
-```
-
-Diagnostics source is mode-dependent:
-
-- Without `analyzer`: CodeMirror linter pulls diagnostics from `TypstCompiler`.
-- With `analyzer`: diagnostics are push-only from tinymist (`TypstAnalyzer`). The linter extension is used only for rendering markers, not as a diagnostics source.
-
-#### Format on save
-
-Enable `formatOnSave` to format the document on Ctrl+S / Cmd+S. Pass a callback to hook into the save event:
+### Format on save
 
 ```ts
 // Format on save, no callback
@@ -245,41 +221,10 @@ formatter: {
 }
 ```
 
-## Development
+### Diagnostics modes
 
-### Prerequisites
-
-- [Bun](https://bun.sh) — workspace scripts and package builds
-- [just](https://just.systems) — task runner (optional, `bun run` scripts also work)
-
-### Commands
-
-| Command        | Description                                       |
-| -------------- | ------------------------------------------------- |
-| `just install` | Install dependencies                              |
-| `just build`   | Build both packages                               |
-| `just test`    | Run tests with [Vitest](https://vitest.dev)       |
-| `just format`  | Format and lint with [Biome](https://biomejs.dev) |
-| `just dev`     | Build packages and start the demo dev server      |
-
-### Testing
-
-Tests use [Vitest](https://vitest.dev) with workspace mode — each package has its own test suite.
-
-```bash
-just test              # run all tests
-just test-watch        # watch mode
-```
-
-`typst-web-service` tests load real typstyle WASM for formatter integration tests. `codemirror-typst` tests use mocked services to verify diagnostic mapping, linter plugin behavior, and formatter error handling.
-
-### Demo
-
-```bash
-just dev
-```
-
-The demo at `demo/` includes a tabbed multi-file editor, live SVG preview, tinymist LSP diagnostics, diagnostics panel with source locations, PDF export, code formatting (Shift+Alt+F), and format on save (Ctrl+S).
+- **Without `analyzer`**: CodeMirror linter pulls diagnostics from `TypstCompiler`.
+- **With `analyzer`**: diagnostics are push-only from tinymist. The linter extension renders markers but doesn't source diagnostics.
 
 ## Architecture
 
@@ -314,16 +259,40 @@ graph TD
   Formatter --> TypstyleWASM["typstyle WASM"]
 ```
 
-- **`TypstCompiler`** manages a Web Worker running the Typst WASM compiler. It handles compilation, PDF rendering, and request coalescing. Accepts both single-file strings and multi-file `Record<string, string>` maps.
-- **`TypstAnalyzer`** runs a tinymist language server in a Web Worker for LSP-based diagnostics, completion, and hover. Optional — the system works without it.
-- **`AnalyzerSession`** synchronizes multi-file project state with the analyzer, handling file ordering (dependencies before entry file), avoiding cross-file race conditions, diagnostic subscriptions with deduplication, and combined sync+compile orchestration. Share a single session across multiple editor tabs to avoid redundant synchronization.
-- **`TypstRenderer`** converts compile vector artifacts to SVG strings. Runs on the main thread with lazy WASM loading.
-- **`TypstFormatter`** is a standalone formatter powered by typstyle WASM. Runs on the main thread and is independent of all other classes.
-- **`codemirror-typst`** provides CodeMirror 6 extensions that consume the service classes. It uses a single diagnostics owner per mode: compiler pull in non-analyzer mode, tinymist push in analyzer mode.
-- Each class is independent — consumers only import what they need.
+- **`TypstCompiler`** — Web Worker running the Typst WASM compiler. Handles compilation, PDF rendering, and request coalescing.
+- **`TypstAnalyzer`** — Web Worker running tinymist for LSP diagnostics, completion, and hover. Optional.
+- **`AnalyzerSession`** — Synchronizes multi-file project state with the analyzer. Handles file ordering, diagnostic subscriptions with deduplication, and combined sync+compile orchestration.
+- **`TypstRenderer`** — Converts compile vector artifacts to SVG. Main thread, lazy WASM loading.
+- **`TypstFormatter`** — Standalone formatter powered by typstyle WASM. Main thread.
+- **`codemirror-typst`** — CodeMirror 6 extensions consuming the service classes. Single diagnostics owner per mode.
+
+## Development
+
+### Prerequisites
+
+- [Bun](https://bun.sh) — workspace scripts and package builds
+- [just](https://just.systems) — task runner (optional, `bun run` scripts also work)
+
+### Commands
+
+| Command | Description |
+|---|---|
+| `just install` | Install dependencies |
+| `just build` | Build both packages |
+| `just test` | Run tests with [Vitest](https://vitest.dev) |
+| `just format` | Format and lint with [Biome](https://biomejs.dev) |
+| `just dev` | Build packages and start the demo dev server |
+
+### Demo
+
+```bash
+just dev
+```
+
+The demo at `demo/` includes a tabbed multi-file editor, live SVG preview, tinymist LSP diagnostics, diagnostics panel, PDF export, code formatting (Shift+Alt+F), and format on save (Ctrl+S).
 
 ## License
 
-MIT - see `LICENSE`.
+MIT — see `LICENSE`.
 
 This project bundles `@myriaddreamin/typst.ts` and `@myriaddreamin/typst-ts-web-compiler`, licensed under Apache-2.0. See `THIRD_PARTY_LICENSES`.
