@@ -45,8 +45,11 @@ This gives you syntax highlighting, diagnostics, and compilation out of the box 
 
 Add formatting, LSP analysis (autocompletion, hover, push diagnostics), and live SVG preview:
 
+For multi-tab editors, create a shared `AnalyzerSession` and pass it to each editor. This avoids redundant file synchronization and keeps diagnostic subscriptions alive across tab switches.
+
 ```ts
 import {
+  AnalyzerSession,
   createTypstExtensions,
   TypstCompiler,
   TypstRenderer,
@@ -60,6 +63,7 @@ const renderer = new TypstRenderer();
 const formatter = new TypstFormatter({ tab_spaces: 2, max_width: 80 });
 const analyzer = new TypstAnalyzer({ wasmUrl: tinymistWasmUrl });
 
+// Create extensions for each tab, sharing the session
 const typstExtensions = await createTypstExtensions({
   compiler: {
     instance: compiler,
@@ -71,7 +75,7 @@ const typstExtensions = await createTypstExtensions({
     },
     delay: 300,
   },
-  analyzer: { instance: analyzer },
+  analyzer: { instance: analyzer, session },
   formatter: { instance: formatter, formatOnSave: true },
   highlighting: { theme: "dark" },
 });
