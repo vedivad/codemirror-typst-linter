@@ -67,9 +67,11 @@ export interface TypstExtensionsOptions {
   /** Tinymist analyzer for diagnostics, autocompletion, and hover. Omit to disable. */
   analyzer?: {
     instance: TypstAnalyzer;
-    /** Project root path for the analyzer session. Default: "/project". */
+    /** Shared AnalyzerSession. When provided, the session is reused (not destroyed with the plugin). When omitted, a new session is created and destroyed with the editor. */
+    session?: AnalyzerSession;
+    /** Project root path for the analyzer session. Default: "/project". Ignored when session is provided. */
     projectRootPath?: string;
-    /** Entry path for the analyzer session. Default: "/main.typ". */
+    /** Entry path for the analyzer session. Default: "/main.typ". Ignored when session is provided. */
     projectEntryPath?: string;
   };
   /** Code formatter. Omit to disable. */
@@ -104,7 +106,8 @@ export async function createTypstExtensions(
   const extensions: Extension[] = [shiki.extension, lintGutter()];
 
   if (options.analyzer) {
-    const session = new AnalyzerSession({
+    const ownsSession = !options.analyzer.session;
+    const session = options.analyzer.session ?? new AnalyzerSession({
       analyzer: options.analyzer.instance,
       rootPath: options.analyzer.projectRootPath,
       entryPath: options.analyzer.projectEntryPath,
@@ -115,6 +118,7 @@ export async function createTypstExtensions(
         new PushDiagnosticsPlugin(
           {
             session,
+            ownsSession,
             compiler: options.compiler.instance,
             compileDelay: delay,
             filePath,
