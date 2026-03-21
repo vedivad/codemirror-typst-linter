@@ -24,7 +24,7 @@
     "dev": "tsup --watch"
   },
   "dependencies": {
-    "@vedivad/typst-web-service": "workspace:*",
+    "@vedivad/typst-web-service": "workspace:^",
     "codemirror-shiki": "^0.3.0",
     "shiki": "^4"
   },
