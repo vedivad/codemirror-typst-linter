@@ -1,8 +1,7 @@
 import { type Diagnostic, setDiagnostics } from "@codemirror/lint";
 import type { EditorView, ViewUpdate } from "@codemirror/view";
-import type { CompileResult, LspDiagnostic, TypstCompiler } from "@vedivad/typst-web-service";
+import type { AnalyzerSession, CompileResult, LspDiagnostic, TypstCompiler } from "@vedivad/typst-web-service";
 import { lspToCMDiagnostic, toCMDiagnostic } from "./diagnostics.js";
-import type { TypstWorkspaceController } from "./workspace-controller.js";
 
 interface BasePluginOptions {
     /** File path this editor represents. Default: "/main.typ" */
@@ -69,7 +68,10 @@ export class CompilerLintPlugin {
 }
 
 export interface PushDiagnosticsPluginOptions extends BasePluginOptions {
-    workspaceController: TypstWorkspaceController;
+    session: AnalyzerSession;
+    /** Whether this plugin owns the session and should destroy it on teardown. Default: true. */
+    ownsSession?: boolean;
+    compiler: TypstCompiler;
     /** Delay in ms before analyzer-mode sync/compile runs after doc changes. Default: 0. */
     compileDelay?: number;
 }
@@ -79,7 +81,6 @@ export class PushDiagnosticsPlugin {
     private readonly path: string;
     private unsubscribeDiagnostics?: () => void;
     private syncTimer: ReturnType<typeof setTimeout> | null = null;
-    private lastDiagnosticsKey: string | null = null;
     private disposed = false;
 
     constructor(
@@ -105,44 +106,36 @@ export class PushDiagnosticsPlugin {
     private bindPushDiagnostics(view: EditorView): void {
         if (this.unsubscribeDiagnostics) return;
 
-        this.unsubscribeDiagnostics = this.options.workspaceController.subscribe(
+        this.unsubscribeDiagnostics = this.options.session.subscribe(
             this.path,
             (lspDiags: LspDiagnostic[]) => {
                 const cmDiags = lspDiags.map((d) => lspToCMDiagnostic(view.state, d));
-                const nextKey = JSON.stringify(
-                    cmDiags.map((d) => [d.from, d.to, d.severity, d.message, d.source]),
-                );
-                if (nextKey === this.lastDiagnosticsKey) return;
-
-                this.lastDiagnosticsKey = nextKey;
                 this.applyDiagnostics(view, cmDiags);
             },
         );
     }
 
+    private pendingDiagnostics: Diagnostic[] | null = null;
+    private rafId: number | null = null;
+
     private applyDiagnostics(view: EditorView, diagnostics: Diagnostic[]): void {
         if (this.disposed) return;
 
-        const dispatchDiagnostics = () => {
-            if (this.disposed) return;
-            view.dispatch(setDiagnostics(view.state, diagnostics));
-            this.options.onDiagnostics?.(diagnostics);
-        };
+        this.pendingDiagnostics = diagnostics;
+        if (this.rafId != null) return;
 
-        try {
-            dispatchDiagnostics();
-        } catch (err) {
-            const message = err instanceof Error ? err.message : String(err);
-            if (message.includes("update are not allowed while an update is in progress")) {
-                setTimeout(() => {
-                    try {
-                        dispatchDiagnostics();
-                    } catch {
-                        // View may already be replaced/destroyed.
-                    }
-                }, 0);
+        this.rafId = requestAnimationFrame(() => {
+            this.rafId = null;
+            if (this.disposed || !this.pendingDiagnostics) return;
+            const diags = this.pendingDiagnostics;
+            this.pendingDiagnostics = null;
+            try {
+                view.dispatch(setDiagnostics(view.state, diags));
+                this.options.onDiagnostics?.(diags);
+            } catch {
+                // View may already be replaced/destroyed.
             }
-        }
+        });
     }
 
     private scheduleSync(view: EditorView, immediate: boolean): void {
@@ -168,10 +161,11 @@ export class PushDiagnosticsPlugin {
         const source = view.state.doc.toString();
         const files = { ...this.options.getFiles?.(), [this.path]: source };
 
-        await this.options.workspaceController.syncAndCompile(
+        await this.options.session.syncAndCompile(
             this.path,
             source,
             files,
+            this.options.compiler,
             (result) => {
                 if (signal.aborted) return;
                 this.options.onCompile?.(result);
@@ -184,6 +178,10 @@ export class PushDiagnosticsPlugin {
         this.disposed = true;
         this.controller?.abort();
         if (this.syncTimer) clearTimeout(this.syncTimer);
+        if (this.rafId != null) cancelAnimationFrame(this.rafId);
         this.unsubscribeDiagnostics?.();
+        if (this.options.ownsSession !== false) {
+            this.options.session.destroy();
+        }
     }
 }

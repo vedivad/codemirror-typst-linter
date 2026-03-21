@@ -1,6 +1,6 @@
 export type { TypstAnalyzerOptions } from "./analyzer.js";
 export { TypstAnalyzer } from "./analyzer.js";
-export type { AnalyzerSessionOptions } from "./analyzer-session.js";
+export type { AnalyzerSessionOptions, DiagnosticsSubscriber } from "./analyzer-session.js";
 export { AnalyzerSession } from "./analyzer-session.js";
 export type { LspDiagnostic } from "./analyzer-types.js";
 export { normalizePath, normalizeRoot, normalizeUntitledUri } from "./uri.js";

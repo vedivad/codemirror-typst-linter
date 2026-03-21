@@ -28,13 +28,13 @@ describe("TypstFormatter", () => {
     expect(result).toBe(source);
   });
 
-  it("respects config options", async () => {
-    const narrow = new TypstFormatter({ max_width: 20 });
-    const wide = new TypstFormatter({ max_width: 200 });
-    const source = "#let x = 1";
-    const narrowResult = await narrow.format(source);
-    const wideResult = await wide.format(source);
-    expect(typeof narrowResult).toBe("string");
-    expect(typeof wideResult).toBe("string");
+  it("respects tab_spaces config", async () => {
+    const two = new TypstFormatter({ tab_spaces: 2 });
+    const four = new TypstFormatter({ tab_spaces: 4 });
+    const source = "#let f(x) = {\nx\n}";
+    const twoResult = await two.format(source);
+    const fourResult = await four.format(source);
+    expect(twoResult).toContain("  x");
+    expect(fourResult).toContain("    x");
   });
 });

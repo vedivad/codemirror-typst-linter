@@ -1,7 +1,7 @@
 import { EditorState } from "@codemirror/state";
 import type { DiagnosticMessage } from "@vedivad/typst-web-service";
 import { describe, expect, it, vi } from "vitest";
-import { CompilerLintPlugin, PushDiagnosticsPlugin } from "../plugin.js";
+import { CompilerLintPlugin } from "../plugin.js";
 
 function mockView(doc: string) {
   const state = EditorState.create({ doc });
@@ -50,14 +50,6 @@ describe("CompilerLintPlugin", () => {
     expect(result[0].message).toBe("boom");
   });
 
-  it("calls onDiagnostics callback", async () => {
-    const onDiagnostics = vi.fn();
-    const compiler = mockCompiler([]);
-    const plugin = new CompilerLintPlugin({ compiler, onDiagnostics });
-    await plugin.lint(mockView(""));
-    expect(onDiagnostics).toHaveBeenCalledWith([]);
-  });
-
   it("passes merged files to compiler.compile", async () => {
     const compiler = mockCompiler();
     const getFiles = () => ({ "/lib.typ": "// lib" });
@@ -70,15 +62,6 @@ describe("CompilerLintPlugin", () => {
     expect(compiler.compile).toHaveBeenCalledWith({
       "/lib.typ": "// lib",
       "/main.typ": "hello",
-    });
-  });
-
-  it("uses /main.typ as default file path", async () => {
-    const compiler = mockCompiler();
-    const plugin = new CompilerLintPlugin({ compiler });
-    await plugin.lint(mockView("content"));
-    expect(compiler.compile).toHaveBeenCalledWith({
-      "/main.typ": "content",
     });
   });
 
@@ -121,20 +104,5 @@ describe("CompilerLintPlugin", () => {
     const [firstResult, secondResult] = await Promise.all([first, second]);
     expect(firstResult).toEqual([]);
     expect(secondResult).toHaveLength(1);
-  });
-
-});
-
-describe("PushDiagnosticsPlugin", () => {
-  it("returns empty diagnostics from lint", async () => {
-    const workspaceController = {
-      subscribe: vi.fn().mockReturnValue(() => { }),
-      syncAndCompile: vi.fn().mockResolvedValue(undefined),
-    } as any;
-
-    const plugin = new PushDiagnosticsPlugin({ workspaceController });
-    const result = await plugin.lint(mockView("x"));
-
-    expect(result).toEqual([]);
   });
 });

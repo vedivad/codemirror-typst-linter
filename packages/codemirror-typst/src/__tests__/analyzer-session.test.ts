@@ -1,6 +1,6 @@
 import type { LspDiagnostic } from "@vedivad/typst-web-service";
+import { AnalyzerSession } from "@vedivad/typst-web-service";
 import { describe, expect, it, vi } from "vitest";
-import { TypstWorkspaceController } from "../workspace-controller.js";
 
 function diagnostic(message: string): LspDiagnostic {
     return {
@@ -14,56 +14,48 @@ function diagnostic(message: string): LspDiagnostic {
     };
 }
 
-function createControllerHarness() {
+function createSessionHarness() {
     let push: ((uri: string, diagnostics: LspDiagnostic[]) => void) | undefined;
 
     const analyzer = {
+        ready: Promise.resolve(),
+        didOpen: vi.fn().mockResolvedValue(undefined),
+        didChange: vi.fn().mockResolvedValue(undefined),
+        completion: vi.fn().mockResolvedValue(null),
+        hover: vi.fn().mockResolvedValue(null),
         onDiagnostics: vi.fn((listener) => {
             push = listener;
             return () => { };
         }),
-    } as any;
+    };
 
-    const compiler = {
-        compile: vi.fn().mockResolvedValue({ diagnostics: [] }),
-    } as any;
-
-    const session = {
-        toUri: vi.fn((path: string) => `untitled:project${path}`),
-        sync: vi.fn().mockResolvedValue(undefined),
-    } as any;
-
-    const controller = new TypstWorkspaceController({
-        analyzer,
-        compiler,
-        session,
-    });
+    const session = new AnalyzerSession({ analyzer });
 
     return {
-        controller,
+        session,
         pushDiagnostics(uri: string, diagnostics: LspDiagnostic[]) {
             push?.(uri, diagnostics);
         },
     };
 }
 
-describe("TypstWorkspaceController", () => {
+describe("AnalyzerSession subscriptions", () => {
     it("replays cached diagnostics on subscribe", () => {
-        const harness = createControllerHarness();
+        const harness = createSessionHarness();
         harness.pushDiagnostics("untitled:project/main.typ", [diagnostic("missing symbol")]);
 
         const listener = vi.fn();
-        harness.controller.subscribe("/main.typ", listener);
+        harness.session.subscribe("/main.typ", listener);
 
         expect(listener).toHaveBeenCalledTimes(1);
         expect(listener.mock.calls[0][0][0].message).toBe("missing symbol");
     });
 
     it("dedupes identical pushed diagnostics", () => {
-        const harness = createControllerHarness();
+        const harness = createSessionHarness();
 
         const listener = vi.fn();
-        harness.controller.subscribe("/main.typ", listener);
+        harness.session.subscribe("/main.typ", listener);
 
         const diagnostics = [diagnostic("same")];
         harness.pushDiagnostics("untitled:project/main.typ", diagnostics);

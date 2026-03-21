@@ -180,8 +180,11 @@ new EditorView({
 
 For multi-file projects, share a single `TypstCompiler` across editors. Each editor declares its `filePath` and provides a `getFiles` getter. Adding a `TypstAnalyzer` enables autocompletion, hover, and push-based diagnostics.
 
+For multi-tab editors, create a shared `AnalyzerSession` and pass it to each editor. This avoids redundant file synchronization and keeps diagnostic subscriptions alive across tab switches.
+
 ```ts
 import {
+  AnalyzerSession,
   createTypstExtensions,
   TypstAnalyzer,
   TypstCompiler,
@@ -193,12 +196,14 @@ const compiler = new TypstCompiler();
 const renderer = new TypstRenderer();
 const analyzer = new TypstAnalyzer({ wasmUrl: "/path/to/tinymist_bg.wasm" });
 const formatter = new TypstFormatter({ tab_spaces: 2, max_width: 80 });
+const session = new AnalyzerSession({ analyzer });
 
 const files: Record<string, string> = {
   "/main.typ": "...",
   "/template.typ": "...",
 };
 
+// Create extensions for each tab, sharing the session
 const typstExtensions = await createTypstExtensions({
   filePath: "/main.typ",
   getFiles: () => files,
@@ -211,7 +216,7 @@ const typstExtensions = await createTypstExtensions({
       }
     },
   },
-  analyzer: { instance: analyzer },
+  analyzer: { instance: analyzer, session },
   formatter: { instance: formatter, formatOnSave: true },
   highlighting: { theme: "dark" },
   onDiagnostics: (d) => console.log(d),
@@ -298,6 +303,7 @@ graph TD
 
   Pull --> Compiler
   Push --> Session
+  Push --> Compiler
   Push --> Linter
   Session --> Analyzer
   FmtExt --> Formatter
@@ -310,7 +316,7 @@ graph TD
 
 - **`TypstCompiler`** manages a Web Worker running the Typst WASM compiler. It handles compilation, PDF rendering, and request coalescing. Accepts both single-file strings and multi-file `Record<string, string>` maps.
 - **`TypstAnalyzer`** runs a tinymist language server in a Web Worker for LSP-based diagnostics, completion, and hover. Optional — the system works without it.
-- **`AnalyzerSession`** synchronizes multi-file project state with the analyzer, handling file ordering (dependencies before entry file), avoiding cross-file race conditions, and forcing active-file refresh on sync to keep cross-file diagnostics current during fast tab switches.
+- **`AnalyzerSession`** synchronizes multi-file project state with the analyzer, handling file ordering (dependencies before entry file), avoiding cross-file race conditions, diagnostic subscriptions with deduplication, and combined sync+compile orchestration. Share a single session across multiple editor tabs to avoid redundant synchronization.
 - **`TypstRenderer`** converts compile vector artifacts to SVG strings. Runs on the main thread with lazy WASM loading.
 - **`TypstFormatter`** is a standalone formatter powered by typstyle WASM. Runs on the main thread and is independent of all other classes.
 - **`codemirror-typst`** provides CodeMirror 6 extensions that consume the service classes. It uses a single diagnostics owner per mode: compiler pull in non-analyzer mode, tinymist push in analyzer mode.
