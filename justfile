@@ -28,8 +28,7 @@ release-check-clean:
     git diff --cached --quiet || (echo "Working tree has staged-but-uncommitted changes. Commit/stash first:" && git status --short && exit 1)
 
 release-bump version:
-    cd packages/typst-web-service && npm version {{version}} --no-git-tag-version
-    cd packages/codemirror-typst && npm version {{version}} --no-git-tag-version
+    npm pkg set version={{version}} --workspace packages/typst-web-service --workspace packages/codemirror-typst
 
 release-tag version:
     git add packages/typst-web-service/package.json packages/codemirror-typst/package.json
