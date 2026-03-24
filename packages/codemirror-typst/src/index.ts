@@ -61,8 +61,10 @@ export interface TypstExtensionsOptions {
     instance: TypstCompiler;
     /** Called after each successful compile with the full result (e.g. for SVG preview). */
     onCompile?: (result: CompileResult) => void;
-    /** Delay in ms before linting fires after a document change. Default: 0. */
+    /** Debounce delay in ms — waits for typing to pause before compiling. Default: 0. */
     delay?: number;
+    /** Throttle delay in ms — guarantees a compile at least this often during continuous typing. Default: none (disabled). */
+    throttleDelay?: number;
   };
   /** Tinymist analyzer for diagnostics, autocompletion, and hover. Omit to disable. */
   analyzer?: {
@@ -103,6 +105,7 @@ export async function createTypstExtensions(
   const shiki = await createTypstShikiHighlighting(options.highlighting);
 
   const delay = options.compiler.delay ?? 0;
+  const throttleDelay = options.compiler.throttleDelay;
   const extensions: Extension[] = [shiki.extension, lintGutter()];
 
   if (options.analyzer) {
@@ -121,6 +124,7 @@ export async function createTypstExtensions(
             ownsSession,
             compiler: options.compiler.instance,
             compileDelay: delay,
+            throttleDelay,
             filePath,
             getFiles,
             onCompile: options.compiler.onCompile,

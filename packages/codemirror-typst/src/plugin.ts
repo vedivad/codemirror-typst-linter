@@ -72,8 +72,10 @@ export interface PushDiagnosticsPluginOptions extends BasePluginOptions {
     /** Whether this plugin owns the session and should destroy it on teardown. Default: true. */
     ownsSession?: boolean;
     compiler: TypstCompiler;
-    /** Delay in ms before analyzer-mode sync/compile runs after doc changes. Default: 0. */
+    /** Debounce delay in ms before sync/compile runs after doc changes. Default: 0. */
     compileDelay?: number;
+    /** Throttle delay in ms — guarantees a compile at least this often during continuous typing. */
+    throttleDelay?: number;
 }
 
 export class PushDiagnosticsPlugin {
@@ -81,6 +83,8 @@ export class PushDiagnosticsPlugin {
     private readonly path: string;
     private unsubscribeDiagnostics?: () => void;
     private syncTimer: ReturnType<typeof setTimeout> | null = null;
+    private throttleTimer: ReturnType<typeof setTimeout> | null = null;
+    private lastSyncTime = 0;
     private disposed = false;
 
     constructor(
@@ -147,8 +151,29 @@ export class PushDiagnosticsPlugin {
         const delay = immediate ? 0 : Math.max(0, this.options.compileDelay ?? 0);
         this.syncTimer = setTimeout(() => {
             this.syncTimer = null;
-            void this.runSync(view);
+            this.fireSync(view);
         }, delay);
+
+        // Throttle: if typing continues past the throttle window, force a compile
+        const throttle = this.options.throttleDelay;
+        if (!immediate && throttle != null && throttle > 0 && !this.throttleTimer) {
+            const elapsed = performance.now() - this.lastSyncTime;
+            const wait = Math.max(0, throttle - elapsed);
+            this.throttleTimer = setTimeout(() => {
+                this.throttleTimer = null;
+                // Only fire if debounce hasn't already fired
+                if (this.syncTimer) {
+                    clearTimeout(this.syncTimer);
+                    this.syncTimer = null;
+                    this.fireSync(view);
+                }
+            }, wait);
+        }
+    }
+
+    private fireSync(view: EditorView): void {
+        this.lastSyncTime = performance.now();
+        void this.runSync(view);
     }
 
     private async runSync(view: EditorView): Promise<void> {
@@ -178,6 +203,7 @@ export class PushDiagnosticsPlugin {
         this.disposed = true;
         this.controller?.abort();
         if (this.syncTimer) clearTimeout(this.syncTimer);
+        if (this.throttleTimer) clearTimeout(this.throttleTimer);
         if (this.rafId != null) cancelAnimationFrame(this.rafId);
         this.unsubscribeDiagnostics?.();
         if (this.options.ownsSession !== false) {
