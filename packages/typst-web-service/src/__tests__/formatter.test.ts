@@ -1,4 +1,33 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("@typstyle/typstyle-wasm-bundler", () => ({
+  format(source: string, config: { tab_spaces?: number; max_width?: number }) {
+    // Naive formatting: collapse whitespace in `#let` assignments
+    const tabSpaces = config?.tab_spaces ?? 2;
+    const indent = " ".repeat(tabSpaces);
+    let result = source.replace(/#let\s+(\w+)\s*=\s*/g, "#let $1 = ");
+    // Indent lines inside braces
+    result = result.replace(/\{\n([^}]+)\n\}/g, (_m, body: string) => {
+      const lines = body
+        .split("\n")
+        .map((l: string) => indent + l.trim())
+        .join("\n");
+      return `{\n${lines}\n}`;
+    });
+    return result;
+  },
+  format_range(
+    source: string,
+    start: number,
+    end: number,
+    _config: Record<string, unknown>,
+  ) {
+    const slice = source.slice(start, end);
+    const text = slice.replace(/#let\s+(\w+)\s*=\s*/g, "#let $1 = ");
+    return { start, end, text };
+  },
+}));
+
 import { TypstFormatter } from "../formatter.js";
 
 describe("TypstFormatter", () => {
