@@ -28,8 +28,6 @@ export interface AnalyzerSessionOptions {
  *   await session.sync("/main.typ", source, files);
  */
 export class AnalyzerSession {
-  readonly ready: Promise<void>;
-
   private readonly analyzer: AnalyzerSessionOptions["analyzer"];
   private readonly rootPath: string;
   private readonly entryPath: string;
@@ -49,7 +47,6 @@ export class AnalyzerSession {
     this.analyzer = options.analyzer;
     this.rootPath = normalizeRoot(options.rootPath ?? "/project");
     this.entryPath = normalizePath(options.entryPath ?? "/main.typ");
-    this.ready = Promise.resolve();
 
     this.unsubscribeAnalyzer = this.analyzer.onDiagnostics(
       (uri, diagnostics) => {
@@ -108,8 +105,6 @@ export class AnalyzerSession {
     const mergedFiles = { ...files, [activePath]: content };
 
     await this.enqueue(async () => {
-      await this.ready;
-
       // Sync dependencies first, then the active file last.
       for (const filePath of this.orderedPaths(mergedFiles)) {
         if (filePath === activePath) continue;
@@ -166,7 +161,6 @@ export class AnalyzerSession {
     const mergedFiles = { ...files, [activePath]: content };
 
     return this.enqueue(async () => {
-      await this.ready;
       for (const filePath of this.orderedPaths(mergedFiles)) {
         if (filePath === activePath) continue;
         await this.syncFile(filePath, mergedFiles[filePath]);
@@ -192,7 +186,6 @@ export class AnalyzerSession {
     const mergedFiles = { ...files, [activePath]: content };
 
     return this.enqueue(async () => {
-      await this.ready;
       for (const filePath of this.orderedPaths(mergedFiles)) {
         if (filePath === activePath) continue;
         await this.syncFile(filePath, mergedFiles[filePath]);
