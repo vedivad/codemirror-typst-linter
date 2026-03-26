@@ -200,10 +200,9 @@ export class PushDiagnosticsPlugin {
 
         if (view) {
             this.bindPushDiagnostics(view);
-            // bindPushDiagnostics replays cached diagnostics synchronously via subscribe(),
-            // so the UI shows the correct state immediately. Force sync still runs to
-            // trigger fresh analysis in case the content changed while on another tab.
-            this.scheduler.schedule(() => this.runSync(view, true).catch((err) => console.error("[typst] sync failed:", err)), true);
+            // Replays cached diagnostics synchronously, then syncs to trigger
+            // fresh analysis (auto-hover if content unchanged).
+            this.scheduler.schedule(() => this.runSync(view).catch((err) => console.error("[typst] sync failed:", err)), true);
         }
     }
 
@@ -214,10 +213,9 @@ export class PushDiagnosticsPlugin {
             this.unsubscribeDiagnostics?.();
             this.unsubscribeDiagnostics = undefined;
             this.bindPushDiagnostics(update.view);
-            // bindPushDiagnostics replays cached diagnostics for the new path synchronously,
-            // replacing any stale diagnostics from the restored EditorState immediately.
-            // Force sync still runs to trigger fresh analysis in case content changed.
-            this.scheduler.schedule(() => this.runSync(update.view, true).catch((err) => console.error("[typst] sync failed:", err)), true);
+            // Replays cached diagnostics for the new path, then syncs to
+            // trigger fresh analysis.
+            this.scheduler.schedule(() => this.runSync(update.view).catch((err) => console.error("[typst] sync failed:", err)), true);
             return;
         }
         if (update.docChanged) {
@@ -260,7 +258,7 @@ export class PushDiagnosticsPlugin {
         });
     }
 
-    private async runSync(view: EditorView, force = false): Promise<void> {
+    private async runSync(view: EditorView): Promise<void> {
         this.controller?.abort();
         this.controller = new AbortController();
         const { signal } = this.controller;
@@ -268,18 +266,16 @@ export class PushDiagnosticsPlugin {
         const source = view.state.doc.toString();
         const files = { ...this.options.getFiles?.(), [this.currentPath]: source };
 
-        await this.options.session.syncAndCompile(
-            this.currentPath,
-            source,
-            files,
-            this.options.compiler,
-            (result) => {
-                if (signal.aborted) return;
-                this.options.onCompile?.(result);
-            },
-            signal,
-            force,
-        );
+        await this.options.session.sync(this.currentPath, files);
+        if (signal.aborted) return;
+
+        try {
+            const result = await this.options.compiler.compile(files);
+            if (signal.aborted) return;
+            this.options.onCompile?.(result);
+        } catch (err) {
+            if (!signal.aborted) console.error("[typst] compile failed:", err);
+        }
     }
 
     destroy(): void {

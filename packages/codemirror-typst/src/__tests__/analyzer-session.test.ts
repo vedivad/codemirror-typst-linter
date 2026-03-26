@@ -107,11 +107,11 @@ describe("AnalyzerSession subscriptions", () => {
   });
 });
 
-describe("AnalyzerSession force sync", () => {
+describe("AnalyzerSession sync", () => {
   it("uses didOpen on first sync", async () => {
     const { session, analyzer } = createSessionHarness();
 
-    await session.sync("/main.typ", "hello", {});
+    await session.sync("/main.typ", { "/main.typ": "hello" });
 
     expect(analyzer.didOpen).toHaveBeenCalledTimes(1);
     expect(analyzer.didChange).not.toHaveBeenCalled();
@@ -120,8 +120,8 @@ describe("AnalyzerSession force sync", () => {
   it("uses didChange on subsequent sync when content differs", async () => {
     const { session, analyzer } = createSessionHarness();
 
-    await session.sync("/main.typ", "hello", {});
-    await session.sync("/main.typ", "world", {});
+    await session.sync("/main.typ", { "/main.typ": "hello" });
+    await session.sync("/main.typ", { "/main.typ": "world" });
 
     expect(analyzer.didOpen).toHaveBeenCalledTimes(1);
     expect(analyzer.didChange).toHaveBeenCalledTimes(1);
@@ -134,23 +134,24 @@ describe("AnalyzerSession force sync", () => {
   it("skips network call on subsequent sync when content is unchanged", async () => {
     const { session, analyzer } = createSessionHarness();
 
-    await session.sync("/main.typ", "hello", {});
-    await session.sync("/main.typ", "hello", {});
+    await session.sync("/main.typ", { "/main.typ": "hello" });
+    await session.sync("/main.typ", { "/main.typ": "hello" });
 
     expect(analyzer.didOpen).toHaveBeenCalledTimes(1);
     expect(analyzer.didChange).not.toHaveBeenCalled();
   });
 
-  it("force sync triggers hover to ensure diagnostics are published", async () => {
+  it("triggers hover when active file content is unchanged to force diagnostics", async () => {
     const { session, analyzer } = createSessionHarness();
 
-    await session.sync("/main.typ", "hello", {});
+    await session.sync("/main.typ", { "/main.typ": "hello" });
 
     analyzer.didOpen.mockClear();
     analyzer.didChange.mockClear();
+    analyzer.hover.mockClear();
 
-    // Force sync with identical content — hover triggers fresh analysis.
-    await session.sync("/main.typ", "hello", {}, true);
+    // Sync again with identical content — hover forces fresh analysis.
+    await session.sync("/main.typ", { "/main.typ": "hello" });
 
     expect(analyzer.didOpen).not.toHaveBeenCalled();
     expect(analyzer.didChange).not.toHaveBeenCalled();

@@ -1,6 +1,5 @@
 import type { LspDiagnostic } from "./analyzer-types.js";
 import type { TypstAnalyzer } from "./analyzer.js";
-import type { CompileResult, TypstCompiler } from "./compiler.js";
 import { normalizePath, normalizeRoot } from "./uri.js";
 
 export type DiagnosticsSubscriber = (diagnostics: LspDiagnostic[]) => void;
@@ -25,7 +24,7 @@ export interface AnalyzerSessionOptions {
  *
  *   const session = new AnalyzerSession({ analyzer });
  *   session.subscribe("/main.typ", (diags) => { ... });
- *   await session.sync("/main.typ", source, files);
+ *   await session.sync("/main.typ", files);
  */
 export class AnalyzerSession {
   private readonly analyzer: AnalyzerSessionOptions["analyzer"];
@@ -92,31 +91,23 @@ export class AnalyzerSession {
   }
 
   /**
-   * Sync all project files with the analyzer, then notify it of the active file change.
-   * Diagnostics will arrive asynchronously via subscribers registered with `subscribe()`.
+   * Sync all project files with the analyzer.
+   * `files` must include the active file's current content under `path`.
+   *
+   * If the active file's content hasn't changed since the last sync, a
+   * lightweight hover is triggered to ensure the analyzer re-analyzes with
+   * the current project state and publishes fresh diagnostics.
    */
-  async sync(
-    path: string,
-    content: string,
-    files: Record<string, string>,
-    force = false,
-  ): Promise<void> {
-    const activePath = normalizePath(path);
-    const mergedFiles = { ...files, [activePath]: content };
-
+  async sync(path: string, files: Record<string, string>): Promise<void> {
     await this.enqueue(async () => {
-      // Sync dependencies first, then the active file last.
-      for (const filePath of this.orderedPaths(mergedFiles)) {
-        if (filePath === activePath) continue;
-        await this.syncFile(filePath, mergedFiles[filePath]);
-      }
-      await this.syncFile(activePath, mergedFiles[activePath]);
+      const changed = await this.syncFiles(path, files);
 
-      // Force: trigger a hover to ensure the analyzer runs full analysis
-      // and publishes fresh diagnostics for the active file.
-      if (force) {
+      // When the active file's content is unchanged, the analyzer won't
+      // publish fresh diagnostics on its own.  A hover request forces it
+      // to re-evaluate with the (possibly updated) project context.
+      if (!changed) {
         try {
-          await this.analyzer.hover(this.toUri(activePath), 0, 0);
+          await this.analyzer.hover(this.toUri(normalizePath(path)), 0, 0);
         } catch {
           /* best-effort — the hover result is unused */
         }
@@ -124,36 +115,11 @@ export class AnalyzerSession {
 
       // Clean up files that were removed from the project.
       for (const filePath of this.syncedFiles.keys()) {
-        if (!Object.hasOwn(mergedFiles, filePath)) {
+        if (!Object.hasOwn(files, filePath)) {
           this.syncedFiles.delete(filePath);
         }
       }
     });
-  }
-
-  /**
-   * Sync files, then compile with the provided compiler.
-   * Diagnostics come from the analyzer (push-based); the compiler provides preview artifacts.
-   */
-  async syncAndCompile(
-    path: string,
-    content: string,
-    files: Record<string, string>,
-    compiler: TypstCompiler,
-    onCompile?: (result: CompileResult) => void,
-    signal?: AbortSignal,
-    force = false,
-  ): Promise<void> {
-    await this.sync(path, content, files, force);
-    if (signal?.aborted) return;
-
-    try {
-      const result = await compiler.compile(files);
-      if (signal?.aborted) return;
-      onCompile?.(result);
-    } catch {
-      // Analyzer push diagnostics are authoritative; compiler errors are non-fatal.
-    }
   }
 
   /**
@@ -162,22 +128,17 @@ export class AnalyzerSession {
    */
   async completion(
     path: string,
-    content: string,
     files: Record<string, string>,
     line: number,
     character: number,
   ): Promise<unknown> {
-    const activePath = normalizePath(path);
-    const mergedFiles = { ...files, [activePath]: content };
-
     return this.enqueue(async () => {
-      for (const filePath of this.orderedPaths(mergedFiles)) {
-        if (filePath === activePath) continue;
-        await this.syncFile(filePath, mergedFiles[filePath]);
-      }
-      await this.syncFile(activePath, mergedFiles[activePath]);
-
-      return this.analyzer.completion(this.toUri(activePath), line, character);
+      await this.syncFiles(path, files);
+      return this.analyzer.completion(
+        this.toUri(normalizePath(path)),
+        line,
+        character,
+      );
     });
   }
 
@@ -187,22 +148,17 @@ export class AnalyzerSession {
    */
   async hover(
     path: string,
-    content: string,
     files: Record<string, string>,
     line: number,
     character: number,
   ): Promise<unknown> {
-    const activePath = normalizePath(path);
-    const mergedFiles = { ...files, [activePath]: content };
-
     return this.enqueue(async () => {
-      for (const filePath of this.orderedPaths(mergedFiles)) {
-        if (filePath === activePath) continue;
-        await this.syncFile(filePath, mergedFiles[filePath]);
-      }
-      await this.syncFile(activePath, mergedFiles[activePath]);
-
-      return this.analyzer.hover(this.toUri(activePath), line, character);
+      await this.syncFiles(path, files);
+      return this.analyzer.hover(
+        this.toUri(normalizePath(path)),
+        line,
+        character,
+      );
     });
   }
 
@@ -212,14 +168,34 @@ export class AnalyzerSession {
     this.diagnosticsCache.clear();
   }
 
-  private async syncFile(path: string, content: string): Promise<void> {
+  /**
+   * Sync all project files: dependencies first, active file last.
+   * Returns whether the active file's content was actually sent to the analyzer.
+   */
+  private async syncFiles(
+    path: string,
+    files: Record<string, string>,
+  ): Promise<boolean> {
+    const activePath = normalizePath(path);
+    for (const filePath of this.orderedPaths(files)) {
+      if (filePath === activePath) continue;
+      await this.syncFile(filePath, files[filePath]);
+    }
+    return this.syncFile(activePath, files[activePath]);
+  }
+
+  /** Sync a single file. Returns true if content was sent to the analyzer. */
+  private async syncFile(path: string, content: string): Promise<boolean> {
     const prev = this.syncedFiles.get(path);
     if (prev == null) {
       await this.analyzer.didOpen(this.toUri(path), content);
     } else if (prev !== content) {
       await this.analyzer.didChange(this.toUri(path), content);
+    } else {
+      return false;
     }
     this.syncedFiles.set(path, content);
+    return true;
   }
 
   private orderedPaths(files: Record<string, string>): string[] {
@@ -241,5 +217,3 @@ export class AnalyzerSession {
     return run;
   }
 }
-
-

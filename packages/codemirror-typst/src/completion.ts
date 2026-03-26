@@ -143,7 +143,6 @@ export function typstCompletionSource(
     try {
       const result = await options.session.completion(
         path,
-        source,
         files,
         lspLine,
         lspChar,

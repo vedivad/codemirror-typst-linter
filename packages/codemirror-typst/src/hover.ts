@@ -92,7 +92,6 @@ export function createTypstHover(options: TypstHoverOptions): Extension {
     try {
       const result = await options.session.hover(
         path,
-        source,
         files,
         lspLine,
         lspChar,
