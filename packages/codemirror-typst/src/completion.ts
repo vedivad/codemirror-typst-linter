@@ -4,6 +4,7 @@ import type {
   CompletionResult,
 } from "@codemirror/autocomplete";
 import type { AnalyzerSession } from "@vedivad/typst-web-service";
+import { gatherFiles, toPathGetter } from "./utils.js";
 
 export interface TypstCompletionOptions {
   session: AnalyzerSession;
@@ -124,9 +125,7 @@ function lspCompletionToCM(
 export function typstCompletionSource(
   options: TypstCompletionOptions,
 ): (ctx: CompletionContext) => Promise<CompletionResult | null> {
-  const fp = options.filePath;
-  const getPath: () => string =
-    typeof fp === "function" ? fp : () => fp ?? "/main.typ";
+  const getPath = toPathGetter(options.filePath);
 
   return async (ctx: CompletionContext): Promise<CompletionResult | null> => {
     // Only trigger on explicit activation or after typing a trigger character
@@ -134,7 +133,7 @@ export function typstCompletionSource(
 
     const path = getPath();
     const source = ctx.state.doc.toString();
-    const files = { ...options.getFiles?.(), [path]: source };
+    const files = gatherFiles(options.getFiles, path, source);
 
     const line = ctx.state.doc.lineAt(ctx.pos);
     const lspLine = line.number - 1;

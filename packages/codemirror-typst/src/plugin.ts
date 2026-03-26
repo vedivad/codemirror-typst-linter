@@ -7,6 +7,7 @@ import type {
     TypstCompiler,
 } from "@vedivad/typst-web-service";
 import { lspToCMDiagnostic, toCMDiagnostic } from "./diagnostics.js";
+import { gatherFiles, toPathGetter } from "./utils.js";
 
 // ---------------------------------------------------------------------------
 // Shared debounce + throttle scheduler
@@ -65,6 +66,69 @@ class CompileScheduler {
 }
 
 // ---------------------------------------------------------------------------
+// Plugin driver — path tracking, scheduling, and abort via composition
+// ---------------------------------------------------------------------------
+
+interface PluginDriverOptions {
+    filePath?: string | (() => string);
+    debounceDelay?: number;
+    throttleDelay?: number;
+}
+
+interface PluginDriverCallbacks {
+    run(view: EditorView): Promise<void>;
+    onPathChange?(view: EditorView): void;
+}
+
+class PluginDriver {
+    private readonly getPath: () => string;
+    currentPath: string;
+    controller: AbortController | null = null;
+    private readonly scheduler: CompileScheduler;
+    private readonly callbacks: PluginDriverCallbacks;
+
+    constructor(
+        options: PluginDriverOptions,
+        callbacks: PluginDriverCallbacks,
+    ) {
+        this.getPath = toPathGetter(options.filePath);
+        this.currentPath = this.getPath();
+        this.scheduler = new CompileScheduler(options);
+        this.callbacks = callbacks;
+    }
+
+    /** Trigger an immediate run. Call once after construction when the view is available. */
+    start(view: EditorView): void {
+        this.scheduleRun(view, true);
+    }
+
+    update(update: ViewUpdate): void {
+        const newPath = this.getPath();
+        if (newPath !== this.currentPath) {
+            this.currentPath = newPath;
+            this.callbacks.onPathChange?.(update.view);
+            this.scheduleRun(update.view, true);
+            return;
+        }
+        if (update.docChanged) {
+            this.scheduleRun(update.view, false);
+        }
+    }
+
+    dispose(): void {
+        this.controller?.abort();
+        this.scheduler.dispose();
+    }
+
+    private scheduleRun(view: EditorView, immediate: boolean): void {
+        this.scheduler.schedule(
+            () => this.callbacks.run(view).catch((err) => console.error("[typst]", err)),
+            immediate,
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Compiler-only plugin
 // ---------------------------------------------------------------------------
 
@@ -87,43 +151,31 @@ export interface CompilerLintPluginOptions extends BasePluginOptions {
 }
 
 export class CompilerLintPlugin {
-    private controller: AbortController | null = null;
-    private readonly getPath: () => string;
-    private currentPath: string;
-    private readonly scheduler: CompileScheduler;
+    private readonly driver: PluginDriver;
 
     constructor(
         private readonly options: CompilerLintPluginOptions,
         view?: EditorView,
     ) {
-        this.getPath =
-            typeof options.filePath === "function"
-                ? options.filePath
-                : (() => { const fp = options.filePath; return () => fp ?? "/main.typ"; })();
-        this.currentPath = this.getPath();
-        this.scheduler = new CompileScheduler(options);
-        if (view) this.scheduler.schedule(() => this.runCompile(view).catch((err) => console.error("[typst] compile failed:", err)), true);
+        this.driver = new PluginDriver(options, { run: (v) => this.run(v) });
+        if (view) this.driver.start(view);
     }
 
     update(update: ViewUpdate): void {
-        const newPath = this.getPath();
-        if (newPath !== this.currentPath) {
-            this.currentPath = newPath;
-            this.scheduler.schedule(() => this.runCompile(update.view).catch((err) => console.error("[typst] compile failed:", err)), true);
-            return;
-        }
-        if (update.docChanged) {
-            this.scheduler.schedule(() => this.runCompile(update.view).catch((err) => console.error("[typst] compile failed:", err)), false);
-        }
+        this.driver.update(update);
     }
 
-    private async runCompile(view: EditorView): Promise<void> {
-        this.controller?.abort();
-        this.controller = new AbortController();
-        const { signal } = this.controller;
+    destroy(): void {
+        this.driver.dispose();
+    }
+
+    private async run(view: EditorView): Promise<void> {
+        this.driver.controller?.abort();
+        this.driver.controller = new AbortController();
+        const { signal } = this.driver.controller;
 
         const source = view.state.doc.toString();
-        const files = { ...this.options.getFiles?.(), [this.currentPath]: source };
+        const files = gatherFiles(this.options.getFiles, this.driver.currentPath, source);
 
         try {
             const result = await this.options.compiler.compile(files);
@@ -131,7 +183,7 @@ export class CompilerLintPlugin {
 
             this.options.onCompile?.(result);
             const diagnostics = result.diagnostics
-                .filter((d) => d.path === this.currentPath)
+                .filter((d) => d.path === this.driver.currentPath)
                 .map((d) => toCMDiagnostic(view.state, d));
 
             this.options.onDiagnostics?.(diagnostics);
@@ -161,12 +213,11 @@ export class CompilerLintPlugin {
             }
         }
     }
-
-    destroy(): void {
-        this.controller?.abort();
-        this.scheduler.dispose();
-    }
 }
+
+// ---------------------------------------------------------------------------
+// Push diagnostics plugin (analyzer session + compiler)
+// ---------------------------------------------------------------------------
 
 export interface PushDiagnosticsPluginOptions extends BasePluginOptions {
     session: AnalyzerSession;
@@ -180,46 +231,65 @@ export interface PushDiagnosticsPluginOptions extends BasePluginOptions {
 }
 
 export class PushDiagnosticsPlugin {
-    private controller: AbortController | null = null;
-    private readonly getPath: () => string;
-    private currentPath: string;
-    private readonly scheduler: CompileScheduler;
+    private readonly driver: PluginDriver;
     private unsubscribeDiagnostics?: () => void;
     private disposed = false;
+    private pendingDiagnostics: Diagnostic[] | null = null;
+    private rafId: number | null = null;
 
     constructor(
         private readonly options: PushDiagnosticsPluginOptions,
         view?: EditorView,
     ) {
-        this.getPath =
-            typeof options.filePath === "function"
-                ? options.filePath
-                : (() => { const fp = options.filePath; return () => fp ?? "/main.typ"; })();
-        this.currentPath = this.getPath();
-        this.scheduler = new CompileScheduler(options);
+        this.driver = new PluginDriver(options, {
+            run: (v) => this.run(v),
+            onPathChange: (v) => this.onPathChange(v),
+        });
 
         if (view) {
+            // Bind before starting so cached diagnostics replay synchronously.
             this.bindPushDiagnostics(view);
-            // Replays cached diagnostics synchronously, then syncs to trigger
-            // fresh analysis (auto-hover if content unchanged).
-            this.scheduler.schedule(() => this.runSync(view).catch((err) => console.error("[typst] sync failed:", err)), true);
+            this.driver.start(view);
         }
     }
 
     update(update: ViewUpdate): void {
-        const newPath = this.getPath();
-        if (newPath !== this.currentPath) {
-            this.currentPath = newPath;
-            this.unsubscribeDiagnostics?.();
-            this.unsubscribeDiagnostics = undefined;
-            this.bindPushDiagnostics(update.view);
-            // Replays cached diagnostics for the new path, then syncs to
-            // trigger fresh analysis.
-            this.scheduler.schedule(() => this.runSync(update.view).catch((err) => console.error("[typst] sync failed:", err)), true);
-            return;
+        this.driver.update(update);
+    }
+
+    destroy(): void {
+        this.disposed = true;
+        this.driver.dispose();
+        if (this.rafId != null) cancelAnimationFrame(this.rafId);
+        this.unsubscribeDiagnostics?.();
+        if (this.options.ownsSession !== false) {
+            this.options.session.destroy();
         }
-        if (update.docChanged) {
-            this.scheduler.schedule(() => this.runSync(update.view).catch((err) => console.error("[typst] sync failed:", err)), false);
+    }
+
+    private onPathChange(view: EditorView): void {
+        this.unsubscribeDiagnostics?.();
+        this.unsubscribeDiagnostics = undefined;
+        this.bindPushDiagnostics(view);
+    }
+
+    private async run(view: EditorView): Promise<void> {
+        this.driver.controller?.abort();
+        this.driver.controller = new AbortController();
+        const { signal } = this.driver.controller;
+
+        const source = view.state.doc.toString();
+        const files = gatherFiles(this.options.getFiles, this.driver.currentPath, source);
+
+        await this.options.session.sync(this.driver.currentPath, files);
+        if (signal.aborted) return;
+
+        try {
+            const result = await this.options.compiler.compile(files);
+            if (signal.aborted) return;
+            this.options.onCompile?.(result);
+        } catch (err) {
+            if (!signal.aborted) console.error("[typst] compile failed:", err);
         }
     }
 
@@ -227,16 +297,13 @@ export class PushDiagnosticsPlugin {
         if (this.unsubscribeDiagnostics) return;
 
         this.unsubscribeDiagnostics = this.options.session.subscribe(
-            this.currentPath,
+            this.driver.currentPath,
             (lspDiags: LspDiagnostic[]) => {
                 const cmDiags = lspDiags.map((d) => lspToCMDiagnostic(view.state, d));
                 this.applyDiagnostics(view, cmDiags);
             },
         );
     }
-
-    private pendingDiagnostics: Diagnostic[] | null = null;
-    private rafId: number | null = null;
 
     private applyDiagnostics(view: EditorView, diagnostics: Diagnostic[]): void {
         if (this.disposed) return;
@@ -256,36 +323,5 @@ export class PushDiagnosticsPlugin {
                 // View may already be replaced/destroyed.
             }
         });
-    }
-
-    private async runSync(view: EditorView): Promise<void> {
-        this.controller?.abort();
-        this.controller = new AbortController();
-        const { signal } = this.controller;
-
-        const source = view.state.doc.toString();
-        const files = { ...this.options.getFiles?.(), [this.currentPath]: source };
-
-        await this.options.session.sync(this.currentPath, files);
-        if (signal.aborted) return;
-
-        try {
-            const result = await this.options.compiler.compile(files);
-            if (signal.aborted) return;
-            this.options.onCompile?.(result);
-        } catch (err) {
-            if (!signal.aborted) console.error("[typst] compile failed:", err);
-        }
-    }
-
-    destroy(): void {
-        this.disposed = true;
-        this.controller?.abort();
-        this.scheduler.dispose();
-        if (this.rafId != null) cancelAnimationFrame(this.rafId);
-        this.unsubscribeDiagnostics?.();
-        if (this.options.ownsSession !== false) {
-            this.options.session.destroy();
-        }
     }
 }

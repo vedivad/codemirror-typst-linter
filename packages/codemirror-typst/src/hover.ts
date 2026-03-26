@@ -3,6 +3,7 @@ import type { EditorState, Extension } from "@codemirror/state";
 import { hoverTooltip, type Tooltip } from "@codemirror/view";
 import type { AnalyzerSession } from "@vedivad/typst-web-service";
 import { renderHoverMarkdown } from "./hover-markdown.js";
+import { gatherFiles, toPathGetter } from "./utils.js";
 
 export interface TypstHoverOptions {
   session: AnalyzerSession;
@@ -69,9 +70,7 @@ function lspHoverToCM(
  * Create a CM6 hover tooltip extension backed by a tinymist AnalyzerSession.
  */
 export function createTypstHover(options: TypstHoverOptions): Extension {
-  const fp = options.filePath;
-  const getPath: () => string =
-    typeof fp === "function" ? fp : () => fp ?? "/main.typ";
+  const getPath = toPathGetter(options.filePath);
 
   return hoverTooltip(async (view, pos): Promise<Tooltip | null> => {
     // If a lint diagnostic covers this position, let the lint tooltip handle it.
@@ -83,7 +82,7 @@ export function createTypstHover(options: TypstHoverOptions): Extension {
 
     const path = getPath();
     const source = view.state.doc.toString();
-    const files = { ...options.getFiles?.(), [path]: source };
+    const files = gatherFiles(options.getFiles, path, source);
 
     const line = view.state.doc.lineAt(pos);
     const lspLine = line.number - 1;
