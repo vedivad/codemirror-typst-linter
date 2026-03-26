@@ -21,10 +21,12 @@ const editorEl = document.getElementById("editor")!;
 const tabsEl = document.getElementById("tabs")!;
 const exportBtn = document.getElementById("export-pdf") as HTMLButtonElement;
 
-const formatter = new TypstFormatter({ tab_spaces: 2, max_width: 80 });
-const compiler = new TypstCompiler();
-const renderer = new TypstRenderer();
-const analyzer = new TypstAnalyzer({ wasmUrl: tinymistWasmUrl });
+const [formatter, compiler, renderer, analyzer] = await Promise.all([
+  TypstFormatter.create({ tab_spaces: 2, max_width: 80 }),
+  TypstCompiler.create(),
+  TypstRenderer.create(),
+  TypstAnalyzer.create({ wasmUrl: tinymistWasmUrl }),
+]);
 const session = new AnalyzerSession({ analyzer });
 
 const filePaths = Object.keys(files);

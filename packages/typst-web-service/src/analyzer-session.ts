@@ -8,7 +8,7 @@ export type DiagnosticsSubscriber = (diagnostics: LspDiagnostic[]) => void;
 export interface AnalyzerSessionOptions {
   analyzer: Pick<
     TypstAnalyzer,
-    "ready" | "didOpen" | "didChange" | "completion" | "hover" | "onDiagnostics"
+    "didOpen" | "didChange" | "completion" | "hover" | "onDiagnostics"
   >;
   /** Project root used to build stable in-memory analyzer URIs. Default: "/project". */
   rootPath?: string;
@@ -50,7 +50,7 @@ export class AnalyzerSession {
     this.analyzer = options.analyzer;
     this.rootPath = normalizeRoot(options.rootPath ?? "/project");
     this.entryPath = normalizePath(options.entryPath ?? "/main.typ");
-    this.ready = this.analyzer.ready;
+    this.ready = Promise.resolve();
 
     this.unsubscribeAnalyzer = this.analyzer.onDiagnostics(
       (uri, diagnostics) => {

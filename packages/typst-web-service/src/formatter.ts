@@ -43,17 +43,21 @@ function getTypstyle(): Promise<TypstyleModule> {
  * The WASM module is loaded lazily on first format call.
  * Requires a bundler that supports WASM imports (e.g. Vite, webpack).
  *
- *   const formatter = new TypstFormatter({ tab_spaces: 2, max_width: 80 });
+ *   const formatter = TypstFormatter.create({ tab_spaces: 2, max_width: 80 });
  *   const formatted = await formatter.format(source);
  */
 export class TypstFormatter {
   private config: FormatConfig;
 
-  constructor(config: FormatConfig = {}) {
+  private constructor(config: FormatConfig = {}) {
     this.config = config;
     // Eagerly start loading WASM so it's ready by first use.
     // Swallow preload errors — they'll surface on first format() call.
-    getTypstyle().catch(() => {});
+    getTypstyle().catch(() => { });
+  }
+
+  static create(config: FormatConfig = {}): TypstFormatter {
+    return new TypstFormatter(config);
   }
 
   /** Format an entire Typst source string. */

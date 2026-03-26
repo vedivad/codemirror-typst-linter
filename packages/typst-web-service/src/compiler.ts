@@ -15,7 +15,7 @@ export interface TypstCompilerOptions {
   /**
    * Explicit Worker instance. When omitted, an inlined blob worker is created automatically.
    * Use this for Vite apps to get proper source maps:
-   *   `new TypstCompiler({ worker: new Worker(new URL('typst-web-service/worker', import.meta.url)) })`
+   *   `await TypstCompiler.create({ worker: new Worker(new URL('typst-web-service/worker', import.meta.url)) })`
    */
   worker?: Worker;
   /**
@@ -53,43 +53,48 @@ function toFiles(
  * Manages a Typst compiler worker. Create one instance and share it across
  * all extensions (linter, autocomplete, preview, etc.).
  *
- *   new TypstCompiler()                                   // blob worker, defaults
- *   new TypstCompiler({ wasmUrl: '...' })                 // blob worker, custom WASM
- *   new TypstCompiler({ worker: myWorker })               // explicit Worker (Vite)
- *   new TypstCompiler({ worker: myWorker, fonts: [...] }) // explicit Worker + options
+ *   await TypstCompiler.create()                                   // blob worker, defaults
+ *   await TypstCompiler.create({ wasmUrl: '...' })                 // blob worker, custom WASM
+ *   await TypstCompiler.create({ worker: myWorker })               // explicit Worker (Vite)
+ *   await TypstCompiler.create({ worker: myWorker, fonts: [...] }) // explicit Worker + options
  */
 export class TypstCompiler {
-  readonly ready: Promise<void>;
-  private idCounter = 0;
+  private idCounter: number;
   private worker: Worker;
 
   /** The most recent vector artifact from a compile, if any. */
   lastVector?: Uint8Array;
 
-  constructor(options: TypstCompilerOptions = {}) {
-    this.worker = options.worker ?? createWorker();
+  private constructor(worker: Worker, idCounter: number) {
+    this.worker = worker;
+    this.idCounter = idCounter;
+  }
 
-    this.ready = workerRpc<WorkerRequest, WorkerResponse>(
-      this.worker,
+  static async create(options: TypstCompilerOptions = {}): Promise<TypstCompiler> {
+    const worker = options.worker ?? createWorker();
+    let idCounter = 0;
+
+    const res = await workerRpc<WorkerRequest, WorkerResponse>(
+      worker,
       {
         type: "init",
-        id: ++this.idCounter,
+        id: ++idCounter,
         wasmUrl: options.wasmUrl ?? DEFAULT_WASM_URL,
         fonts: options.fonts ?? DEFAULT_FONTS,
         packages: options.packages ?? true,
       },
       TIMEOUT.INIT,
-    ).then((res) => {
-      if (res.type === "error")
-        throw new Error(`TypstCompiler init failed: ${res.message}`);
-    });
+    );
+    if (res.type === "error")
+      throw new Error(`TypstCompiler init failed: ${res.message}`);
+
+    return new TypstCompiler(worker, idCounter);
   }
 
   /** Compile a single source string (treated as /main.typ) or a map of files. */
   async compile(
     source: string | Record<string, string>,
   ): Promise<CompileResult> {
-    await this.ready;
     const id = ++this.idCounter;
     const files = toFiles(source);
     const response = await workerRpc<WorkerRequest, WorkerResponse>(
@@ -116,7 +121,6 @@ export class TypstCompiler {
   async compilePdf(
     source: string | Record<string, string>,
   ): Promise<Uint8Array> {
-    await this.ready;
     const id = ++this.idCounter;
     const files = toFiles(source);
     const response = await workerRpc<WorkerRequest, WorkerResponse>(

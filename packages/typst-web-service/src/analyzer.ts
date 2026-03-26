@@ -19,7 +19,7 @@ export interface TypstAnalyzerOptions {
   /**
    * Explicit Worker instance. When omitted, an inlined blob worker is created automatically.
    * Use this for Vite apps:
-   *   `new TypstAnalyzer({ worker: new Worker(new URL('typst-web-service/analyzer-worker', import.meta.url), { type: 'module' }) })`
+   *   `await TypstAnalyzer.create({ worker: new Worker(new URL('typst-web-service/analyzer-worker', import.meta.url), { type: 'module' }) })`
    */
   worker?: Worker;
   /**
@@ -39,22 +39,20 @@ const TIMEOUT = { INIT: 120_000, REQUEST: 30_000, DESTROY: 5_000 } as const;
  * content changes, and receive diagnostics via `onDiagnostics()` listeners
  * whenever tinymist publishes them.
  *
- *   const analyzer = new TypstAnalyzer({ wasmUrl: '...' });
+ *   const analyzer = await TypstAnalyzer.create({ wasmUrl: '...' });
  *   analyzer.onDiagnostics((uri, diags) => { ... });
  */
 export class TypstAnalyzer {
-  readonly ready: Promise<void>;
-  private idCounter = 0;
+  private idCounter: number;
   private versionCounter = 0;
   private worker: Worker;
   private openedUris = new Set<string>();
   private diagnosticsListeners = new Set<DiagnosticsListener>();
   private latestDiagnosticsByUri = new Map<string, LspDiagnostic[]>();
 
-  constructor(options: TypstAnalyzerOptions) {
-    this.worker = options.worker ?? createAnalyzerWorker();
-    const absoluteWasmUrl = new URL(options.wasmUrl, globalThis.location?.href)
-      .href;
+  private constructor(worker: Worker, idCounter: number) {
+    this.worker = worker;
+    this.idCounter = idCounter;
 
     // Listen for unsolicited diagnostic push notifications from the worker.
     this.worker.addEventListener(
@@ -70,14 +68,23 @@ export class TypstAnalyzer {
         }
       },
     );
+  }
 
-    this.ready = this.rpc(
-      { type: "init", id: ++this.idCounter, wasmUrl: absoluteWasmUrl },
+  static async create(options: TypstAnalyzerOptions): Promise<TypstAnalyzer> {
+    const worker = options.worker ?? createAnalyzerWorker();
+    let idCounter = 0;
+    const absoluteWasmUrl = new URL(options.wasmUrl, globalThis.location?.href)
+      .href;
+
+    const res = await workerRpc<AnalyzerRequest, AnalyzerResponse>(
+      worker,
+      { type: "init", id: ++idCounter, wasmUrl: absoluteWasmUrl },
       TIMEOUT.INIT,
-    ).then((res) => {
-      if (res.type === "error")
-        throw new Error(`TypstAnalyzer init failed: ${res.message}`);
-    });
+    );
+    if (res.type === "error")
+      throw new Error(`TypstAnalyzer init failed: ${res.message}`);
+
+    return new TypstAnalyzer(worker, idCounter);
   }
 
   /**
@@ -102,7 +109,6 @@ export class TypstAnalyzer {
   }
 
   async didOpen(uri: string, content: string): Promise<void> {
-    await this.ready;
     const res = await this.rpc({
       type: "didOpen",
       id: ++this.idCounter,
@@ -118,7 +124,6 @@ export class TypstAnalyzer {
    * Diagnostics will arrive asynchronously via `onDiagnostics()` listeners.
    */
   async didChange(uri: string, content: string): Promise<void> {
-    await this.ready;
     if (!this.openedUris.has(uri)) {
       await this.didOpen(uri, content);
       return;
@@ -140,7 +145,6 @@ export class TypstAnalyzer {
     line: number,
     character: number,
   ): Promise<unknown> {
-    await this.ready;
     const res = await this.rpc({
       type: "completion",
       id: ++this.idCounter,
@@ -154,7 +158,6 @@ export class TypstAnalyzer {
   }
 
   async hover(uri: string, line: number, character: number): Promise<unknown> {
-    await this.ready;
     const res = await this.rpc({
       type: "hover",
       id: ++this.idCounter,

@@ -44,17 +44,21 @@ export interface TypstRendererOptions {
  *
  * The renderer WASM module is loaded lazily on first use.
  *
- *   const renderer = new TypstRenderer();
+ *   const renderer = TypstRenderer.create();
  *   const svg = await renderer.renderSvg(vector);
  */
 export class TypstRenderer {
   private wasmUrl: string;
   private instance: Promise<RendererInstance> | null = null;
 
-  constructor(options: TypstRendererOptions = {}) {
+  private constructor(options: TypstRendererOptions = {}) {
     this.wasmUrl = options.wasmUrl ?? DEFAULT_RENDERER_WASM_URL;
     // Eagerly start loading the WASM module so it's ready by first use.
-    getRendererModule().catch(() => {});
+    getRendererModule().catch(() => { });
+  }
+
+  static create(options: TypstRendererOptions = {}): TypstRenderer {
+    return new TypstRenderer(options);
   }
 
   private getInstance(): Promise<RendererInstance> {
