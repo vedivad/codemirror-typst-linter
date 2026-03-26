@@ -29,44 +29,40 @@ const [formatter, compiler, renderer, analyzer] = await Promise.all([
 
 const filePaths = Object.keys(files);
 
-// --- Editor states ---
+// --- Editor state ---
 
 let activeFile = filePaths[0];
 let activeView: EditorView | null = null;
 
-async function makeState(path: string, doc: string): Promise<EditorState> {
-  const typstExtensions = await createTypstExtensions({
-    filePath: path,
-    getFiles: () => files,
-    compiler: {
-      instance: compiler,
-      onCompile: async (result) => {
-        if (result.vector) {
-          const svg = await renderer.renderSvg(result.vector);
-          previewEl.innerHTML = `<div class="svg-container">${svg}</div>`;
-        }
-      },
-    },
-    analyzer: { instance: analyzer },
-    formatter: { instance: formatter, formatOnSave: true },
-    highlighting: { theme: "dark" },
-    onDiagnostics: (d) => {
-      if (path === activeFile)
-        updateDiagnostics(diagnosticsEl, d, activeView?.state.doc);
-    },
-  });
+// --- Shared extensions (one plugin instance survives tab switches via shared extension refs) ---
 
-  return EditorState.create({
-    doc,
-    extensions: [basicSetup, oneDark, ...typstExtensions],
-  });
-}
+const typstExtensions = await createTypstExtensions({
+  filePath: () => activeFile,
+  getFiles: () => files,
+  compiler: {
+    instance: compiler,
+    onCompile: async (result) => {
+      if (result.vector) {
+        const svg = await renderer.renderSvg(result.vector);
+        previewEl.innerHTML = `<div class="svg-container">${svg}</div>`;
+      }
+    },
+  },
+  analyzer: { instance: analyzer },
+  formatter: { instance: formatter, formatOnSave: true },
+  highlighting: { theme: "dark" },
+  onDiagnostics: (d) => {
+    updateDiagnostics(diagnosticsEl, d, activeView?.state.doc);
+  },
+});
 
-const states: Record<string, EditorState> = {};
-await Promise.all(
-  Object.entries(files).map(async ([path, content]) => {
-    states[path] = await makeState(path, content);
-  }),
+const sharedExtensions = [basicSetup, oneDark, ...typstExtensions];
+
+const states: Record<string, EditorState> = Object.fromEntries(
+  Object.entries(files).map(([path, content]) => [
+    path,
+    EditorState.create({ doc: content, extensions: sharedExtensions }),
+  ]),
 );
 
 // --- Tab switching ---

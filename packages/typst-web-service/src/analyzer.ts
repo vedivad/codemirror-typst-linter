@@ -48,7 +48,6 @@ export class TypstAnalyzer {
   private worker: Worker;
   private openedUris = new Set<string>();
   private diagnosticsListeners = new Set<DiagnosticsListener>();
-  private latestDiagnosticsByUri = new Map<string, LspDiagnostic[]>();
 
   private constructor(worker: Worker, idCounter: number) {
     this.worker = worker;
@@ -61,7 +60,6 @@ export class TypstAnalyzer {
         if (e.data.type === "diagnostics" && !("id" in e.data)) {
           const event = e.data as AnalyzerDiagnosticEvent;
           const normalizedUri = normalizeUntitledUri(event.uri);
-          this.latestDiagnosticsByUri.set(normalizedUri, event.diagnostics);
           for (const listener of this.diagnosticsListeners) {
             listener(normalizedUri, event.diagnostics);
           }
@@ -96,11 +94,6 @@ export class TypstAnalyzer {
     return () => this.diagnosticsListeners.delete(listener);
   }
 
-  /** Returns the latest pushed diagnostics for a URI, if available. */
-  getLatestDiagnostics(uri: string): LspDiagnostic[] | undefined {
-    return this.latestDiagnosticsByUri.get(normalizeUntitledUri(uri));
-  }
-
   private rpc(
     request: AnalyzerRequest,
     timeoutMs: number = TIMEOUT.REQUEST,
@@ -117,6 +110,17 @@ export class TypstAnalyzer {
     });
     if (res.type === "error") throw new Error(res.message);
     this.openedUris.add(uri);
+  }
+
+  async didClose(uri: string): Promise<void> {
+    if (!this.openedUris.has(uri)) return;
+    const res = await this.rpc({
+      type: "didClose",
+      id: ++this.idCounter,
+      uri,
+    });
+    if (res.type === "error") throw new Error(res.message);
+    this.openedUris.delete(uri);
   }
 
   /**
@@ -172,7 +176,6 @@ export class TypstAnalyzer {
 
   destroy(): void {
     this.diagnosticsListeners.clear();
-    this.latestDiagnosticsByUri.clear();
     destroyWorker(
       this.worker,
       { type: "destroy" as const, id: ++this.idCounter },

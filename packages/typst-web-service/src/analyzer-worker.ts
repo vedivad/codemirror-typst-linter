@@ -117,6 +117,19 @@ self.onmessage = async (e: MessageEvent<AnalyzerRequest>) => {
     return;
   }
 
+  if (req.type === "didClose") {
+    try {
+      server.on_notification("textDocument/didClose", {
+        textDocument: { uri: req.uri },
+      });
+      flushEvents();
+      self.postMessage({ type: "ack", id: req.id } satisfies AnalyzerResponse);
+    } catch (err) {
+      postError(req.id, err);
+    }
+    return;
+  }
+
   if (req.type === "didChange") {
     try {
       server.on_notification("textDocument/didChange", {

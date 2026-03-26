@@ -35,15 +35,12 @@ export class AnalyzerSession {
   private readonly entryPath: string;
   private readonly syncedFiles = new Map<string, string>();
   private queue: Promise<void> = Promise.resolve();
-  private syncRevision = 0;
 
   // Diagnostic subscription state
   private readonly listenersByUri = new Map<
     string,
     Set<DiagnosticsSubscriber>
   >();
-  private readonly diagnosticsByUri = new Map<string, LspDiagnostic[]>();
-  private readonly diagnosticsHashByUri = new Map<string, string>();
   private readonly unsubscribeAnalyzer: () => void;
 
   constructor(options: AnalyzerSessionOptions) {
@@ -54,12 +51,6 @@ export class AnalyzerSession {
 
     this.unsubscribeAnalyzer = this.analyzer.onDiagnostics(
       (uri, diagnostics) => {
-        const nextHash = diagnosticsHash(diagnostics);
-        if (this.diagnosticsHashByUri.get(uri) === nextHash) return;
-
-        this.diagnosticsByUri.set(uri, diagnostics);
-        this.diagnosticsHashByUri.set(uri, nextHash);
-
         const listeners = this.listenersByUri.get(uri);
         if (!listeners) return;
         for (const listener of listeners) listener(diagnostics);
@@ -75,7 +66,7 @@ export class AnalyzerSession {
 
   /**
    * Subscribe to push-based diagnostics for a file path.
-   * Returns an unsubscribe function. Replays cached diagnostics immediately.
+   * Returns an unsubscribe function.
    */
   subscribe(path: string, listener: DiagnosticsSubscriber): () => void {
     const uri = this.toUri(path);
@@ -86,9 +77,6 @@ export class AnalyzerSession {
       this.listenersByUri.set(uri, listeners);
     }
     listeners.add(listener);
-
-    const cached = this.diagnosticsByUri.get(uri);
-    if (cached) listener(cached);
 
     return () => {
       const current = this.listenersByUri.get(uri);
@@ -106,23 +94,20 @@ export class AnalyzerSession {
     path: string,
     content: string,
     files: Record<string, string>,
+    force = false,
   ): Promise<void> {
-    ++this.syncRevision;
     const activePath = normalizePath(path);
     const mergedFiles = { ...files, [activePath]: content };
 
     await this.enqueue(async () => {
       await this.ready;
 
-      // Sync non-active files first (dependencies), then the active file last
-      // to trigger tinymist diagnostics.
+      // Sync dependencies first, then the active file last.
       for (const filePath of this.orderedPaths(mergedFiles)) {
         if (filePath === activePath) continue;
-        await this.syncFile(filePath, mergedFiles[filePath], false);
+        await this.syncFile(filePath, mergedFiles[filePath]);
       }
-
-      // Active file always uses didOpen to trigger tinymist compilation.
-      await this.syncFile(activePath, mergedFiles[activePath], true);
+      await this.syncFile(activePath, mergedFiles[activePath], force);
 
       // Clean up files that were removed from the project.
       for (const filePath of this.syncedFiles.keys()) {
@@ -144,8 +129,9 @@ export class AnalyzerSession {
     compiler: TypstCompiler,
     onCompile?: (result: CompileResult) => void,
     signal?: AbortSignal,
+    force = false,
   ): Promise<void> {
-    await this.sync(path, content, files);
+    await this.sync(path, content, files, force);
     if (signal?.aborted) return;
 
     try {
@@ -168,19 +154,16 @@ export class AnalyzerSession {
     line: number,
     character: number,
   ): Promise<unknown> {
-    const enqueuedRevision = this.syncRevision;
     const activePath = normalizePath(path);
     const mergedFiles = { ...files, [activePath]: content };
 
     return this.enqueue(async () => {
-      if (enqueuedRevision !== this.syncRevision) return null;
-
       await this.ready;
       for (const filePath of this.orderedPaths(mergedFiles)) {
         if (filePath === activePath) continue;
-        await this.syncFile(filePath, mergedFiles[filePath], false);
+        await this.syncFile(filePath, mergedFiles[filePath]);
       }
-      await this.syncFile(activePath, mergedFiles[activePath], false);
+      await this.syncFile(activePath, mergedFiles[activePath]);
 
       return this.analyzer.completion(this.toUri(activePath), line, character);
     });
@@ -197,19 +180,16 @@ export class AnalyzerSession {
     line: number,
     character: number,
   ): Promise<unknown> {
-    const enqueuedRevision = this.syncRevision;
     const activePath = normalizePath(path);
     const mergedFiles = { ...files, [activePath]: content };
 
     return this.enqueue(async () => {
-      if (enqueuedRevision !== this.syncRevision) return null;
-
       await this.ready;
       for (const filePath of this.orderedPaths(mergedFiles)) {
         if (filePath === activePath) continue;
-        await this.syncFile(filePath, mergedFiles[filePath], false);
+        await this.syncFile(filePath, mergedFiles[filePath]);
       }
-      await this.syncFile(activePath, mergedFiles[activePath], false);
+      await this.syncFile(activePath, mergedFiles[activePath]);
 
       return this.analyzer.hover(this.toUri(activePath), line, character);
     });
@@ -218,31 +198,22 @@ export class AnalyzerSession {
   destroy(): void {
     this.unsubscribeAnalyzer();
     this.listenersByUri.clear();
-    this.diagnosticsByUri.clear();
-    this.diagnosticsHashByUri.clear();
   }
 
-  /**
-   * Sync a single file with the analyzer.
-   * @param forceOpen - Always use didOpen (triggers tinymist diagnostics for the active file).
-   */
-  private async syncFile(
-    path: string,
-    content: string,
-    forceOpen: boolean,
-  ): Promise<void> {
+  private async syncFile(path: string, content: string, force = false): Promise<void> {
     const prev = this.syncedFiles.get(path);
-
-    if (forceOpen || prev == null) {
+    if (prev == null) {
       await this.analyzer.didOpen(this.toUri(path), content);
-      this.syncedFiles.set(path, content);
-      return;
-    }
-
-    if (prev !== content) {
+    } else if (force) {
+      // Tinymist deduplicates by content hash, so a didChange with identical content
+      // would be silently ignored. Send a trivial change (trailing comment) first to
+      // force a fresh analysis cycle, then restore the real content.
+      await this.analyzer.didChange(this.toUri(path), content + "\n//");
       await this.analyzer.didChange(this.toUri(path), content);
-      this.syncedFiles.set(path, content);
+    } else if (prev !== content) {
+      await this.analyzer.didChange(this.toUri(path), content);
     }
+    this.syncedFiles.set(path, content);
   }
 
   private orderedPaths(files: Record<string, string>): string[] {
@@ -265,16 +236,4 @@ export class AnalyzerSession {
   }
 }
 
-function diagnosticsHash(diagnostics: LspDiagnostic[]): string {
-  return JSON.stringify(
-    diagnostics.map((d) => [
-      d.range.start.line,
-      d.range.start.character,
-      d.range.end.line,
-      d.range.end.character,
-      d.severity ?? 1,
-      d.message,
-      d.source ?? "",
-    ]),
-  );
-}
+

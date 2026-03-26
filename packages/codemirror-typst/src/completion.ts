@@ -7,8 +7,8 @@ import type { AnalyzerSession } from "@vedivad/typst-web-service";
 
 export interface TypstCompletionOptions {
   session: AnalyzerSession;
-  /** File path this editor represents. Default: "/main.typ" */
-  filePath?: string;
+  /** File path this editor represents, or a getter for dynamic paths. Default: "/main.typ" */
+  filePath?: string | (() => string);
   /** Return all project files. The editor's content is included automatically under filePath. */
   getFiles?: () => Record<string, string>;
 }
@@ -124,12 +124,15 @@ function lspCompletionToCM(
 export function typstCompletionSource(
   options: TypstCompletionOptions,
 ): (ctx: CompletionContext) => Promise<CompletionResult | null> {
-  const path = options.filePath ?? "/main.typ";
+  const fp = options.filePath;
+  const getPath: () => string =
+    typeof fp === "function" ? fp : () => fp ?? "/main.typ";
 
   return async (ctx: CompletionContext): Promise<CompletionResult | null> => {
     // Only trigger on explicit activation or after typing a trigger character
     if (!ctx.explicit && !ctx.matchBefore(/[#\w.]/)) return null;
 
+    const path = getPath();
     const source = ctx.state.doc.toString();
     const files = { ...options.getFiles?.(), [path]: source };
 

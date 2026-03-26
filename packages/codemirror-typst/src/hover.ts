@@ -1,3 +1,4 @@
+import { forEachDiagnostic } from "@codemirror/lint";
 import type { EditorState, Extension } from "@codemirror/state";
 import { hoverTooltip, type Tooltip } from "@codemirror/view";
 import type { AnalyzerSession } from "@vedivad/typst-web-service";
@@ -5,8 +6,8 @@ import { renderHoverMarkdown } from "./hover-markdown.js";
 
 export interface TypstHoverOptions {
   session: AnalyzerSession;
-  /** File path this editor represents. Default: "/main.typ" */
-  filePath?: string;
+  /** File path this editor represents, or a getter for dynamic paths. Default: "/main.typ" */
+  filePath?: string | (() => string);
   /** Return all project files. The editor's content is included automatically under filePath. */
   getFiles?: () => Record<string, string>;
   /** Optional function to syntax-highlight code blocks. Receives code and language, returns HTML string. */
@@ -15,9 +16,9 @@ export interface TypstHoverOptions {
 
 interface LspHoverResult {
   contents:
-    | string
-    | { kind: string; value: string }
-    | (string | { language: string; value: string })[];
+  | string
+  | { kind: string; value: string }
+  | (string | { language: string; value: string })[];
   range?: {
     start: { line: number; character: number };
     end: { line: number; character: number };
@@ -68,9 +69,19 @@ function lspHoverToCM(
  * Create a CM6 hover tooltip extension backed by a tinymist AnalyzerSession.
  */
 export function createTypstHover(options: TypstHoverOptions): Extension {
-  const path = options.filePath ?? "/main.typ";
+  const fp = options.filePath;
+  const getPath: () => string =
+    typeof fp === "function" ? fp : () => fp ?? "/main.typ";
 
   return hoverTooltip(async (view, pos): Promise<Tooltip | null> => {
+    // If a lint diagnostic covers this position, let the lint tooltip handle it.
+    let hasDiagnostic = false;
+    forEachDiagnostic(view.state, (d, from, to) => {
+      if (pos >= from && pos <= to) hasDiagnostic = true;
+    });
+    if (hasDiagnostic) return null;
+
+    const path = getPath();
     const source = view.state.doc.toString();
     const files = { ...options.getFiles?.(), [path]: source };
 
