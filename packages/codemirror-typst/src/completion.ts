@@ -8,8 +8,8 @@ import { gatherFiles, toPathGetter } from "./utils.js";
 
 export interface TypstCompletionOptions {
   session: AnalyzerSession;
-  /** File path this editor represents, or a getter for dynamic paths. Default: "/main.typ" */
-  filePath?: string | (() => string);
+  /** File path this editor represents. Default: () => "/main.typ" */
+  filePath?: () => string;
   /** Return all project files. The editor's content is included automatically under filePath. */
   getFiles?: () => Record<string, string>;
 }

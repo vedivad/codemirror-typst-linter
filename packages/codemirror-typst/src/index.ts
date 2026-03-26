@@ -53,8 +53,8 @@ export {
 const sessionCache = new WeakMap<TypstAnalyzer, AnalyzerSession>();
 
 export interface TypstExtensionsOptions {
-  /** File path this editor represents, or a getter for dynamic paths. Default: "/main.typ" */
-  filePath?: string | (() => string);
+  /** File path this editor represents. Default: () => "/main.typ" */
+  filePath?: () => string;
   /** Return all project files. The editor's content is included automatically under filePath. */
   getFiles?: () => Record<string, string>;
   /** Called after each lint pass with the resulting diagnostics. */
@@ -98,7 +98,7 @@ export interface TypstExtensionsOptions {
  *
  * ```ts
  * const extensions = await createTypstExtensions({
- *   filePath: "/main.typ",
+ *   filePath: () => "/main.typ",
  *   getFiles: () => files,
  *   compiler: { instance: compiler, onCompile: (r) => { ... } },
  *   analyzer: { instance: analyzer },

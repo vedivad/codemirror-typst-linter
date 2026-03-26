@@ -4,8 +4,8 @@ import type { CompileResult } from "@vedivad/typst-web-service";
 import { toPathGetter } from "./utils.js";
 
 export interface BasePluginOptions {
-  /** File path this editor represents, or a getter for dynamic paths. Default: "/main.typ" */
-  filePath?: string | (() => string);
+  /** File path this editor represents. Default: () => "/main.typ" */
+  filePath?: () => string;
   /** Debounce delay in ms before compile/sync runs after doc changes. Default: 0. */
   debounceDelay?: number;
   /** Throttle delay in ms — guarantees a run at least this often during continuous typing. */
@@ -77,7 +77,7 @@ export class PluginDriver {
   private readonly callbacks: PluginDriverCallbacks;
 
   constructor(
-    options: { filePath?: string | (() => string); debounceDelay?: number; throttleDelay?: number },
+    options: { filePath?: () => string; debounceDelay?: number; throttleDelay?: number },
     callbacks: PluginDriverCallbacks,
   ) {
     this.getPath = toPathGetter(options.filePath);

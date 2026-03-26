@@ -1,13 +1,8 @@
 /**
- * Normalize a `filePath` option (static string or getter) into a stable getter.
- * Defaults to "/main.typ" when omitted.
+ * Return the given path getter, or a default that returns "/main.typ".
  */
-export function toPathGetter(
-  filePath?: string | (() => string),
-): () => string {
-  return typeof filePath === "function"
-    ? filePath
-    : () => filePath ?? "/main.typ";
+export function toPathGetter(filePath?: () => string): () => string {
+  return filePath ?? (() => "/main.typ");
 }
 
 /**
