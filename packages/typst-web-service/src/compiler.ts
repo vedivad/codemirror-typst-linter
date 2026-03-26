@@ -70,7 +70,9 @@ export class TypstCompiler {
     this.idCounter = idCounter;
   }
 
-  static async create(options: TypstCompilerOptions = {}): Promise<TypstCompiler> {
+  static async create(
+    options: TypstCompilerOptions = {},
+  ): Promise<TypstCompiler> {
     const worker = options.worker ?? createWorker();
     let idCounter = 0;
 

@@ -25,7 +25,7 @@ function createSessionHarness() {
     hover: vi.fn().mockResolvedValue(null),
     onDiagnostics: vi.fn((listener) => {
       push = listener;
-      return () => { };
+      return () => {};
     }),
   };
 
@@ -71,7 +71,9 @@ describe("AnalyzerSession subscriptions", () => {
     const harness = createSessionHarness();
 
     // Push before any subscriber is registered.
-    harness.pushDiagnostics("untitled:project/main.typ", [diagnostic("error A")]);
+    harness.pushDiagnostics("untitled:project/main.typ", [
+      diagnostic("error A"),
+    ]);
 
     // Late subscriber should get the cached value immediately.
     const listener = vi.fn();
@@ -85,7 +87,9 @@ describe("AnalyzerSession subscriptions", () => {
     const harness = createSessionHarness();
 
     // Push for a different file.
-    harness.pushDiagnostics("untitled:project/template.typ", [diagnostic("error")]);
+    harness.pushDiagnostics("untitled:project/template.typ", [
+      diagnostic("error"),
+    ]);
 
     const listener = vi.fn();
     harness.session.subscribe("/main.typ", listener);
@@ -96,8 +100,12 @@ describe("AnalyzerSession subscriptions", () => {
   it("replays the most recent push, not an older one", () => {
     const harness = createSessionHarness();
 
-    harness.pushDiagnostics("untitled:project/main.typ", [diagnostic("error A")]);
-    harness.pushDiagnostics("untitled:project/main.typ", [diagnostic("error B")]);
+    harness.pushDiagnostics("untitled:project/main.typ", [
+      diagnostic("error A"),
+    ]);
+    harness.pushDiagnostics("untitled:project/main.typ", [
+      diagnostic("error B"),
+    ]);
 
     const listener = vi.fn();
     harness.session.subscribe("/main.typ", listener);

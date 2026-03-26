@@ -54,7 +54,7 @@ export class TypstRenderer {
   private constructor(options: TypstRendererOptions = {}) {
     this.wasmUrl = options.wasmUrl ?? DEFAULT_RENDERER_WASM_URL;
     // Eagerly start loading the WASM module so it's ready by first use.
-    getRendererModule().catch(() => { });
+    getRendererModule().catch(() => {});
   }
 
   static create(options: TypstRendererOptions = {}): TypstRenderer {

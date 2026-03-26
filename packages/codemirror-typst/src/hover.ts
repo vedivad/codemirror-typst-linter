@@ -17,9 +17,9 @@ export interface TypstHoverOptions {
 
 interface LspHoverResult {
   contents:
-  | string
-  | { kind: string; value: string }
-  | (string | { language: string; value: string })[];
+    | string
+    | { kind: string; value: string }
+    | (string | { language: string; value: string })[];
   range?: {
     start: { line: number; character: number };
     end: { line: number; character: number };
@@ -89,12 +89,7 @@ export function createTypstHover(options: TypstHoverOptions): Extension {
     const lspChar = pos - line.from;
 
     try {
-      const result = await options.session.hover(
-        path,
-        files,
-        lspLine,
-        lspChar,
-      );
+      const result = await options.session.hover(path, files, lspLine, lspChar);
       if (!result) return null;
       return lspHoverToCM(view.state, pos, result, options.highlightCode);
     } catch {

@@ -14,19 +14,19 @@ export type AnalyzerRequest =
   | { type: "didOpen"; id: number; uri: string; content: string }
   | { type: "didClose"; id: number; uri: string }
   | {
-    type: "didChange";
-    id: number;
-    uri: string;
-    version: number;
-    content: string;
-  }
+      type: "didChange";
+      id: number;
+      uri: string;
+      version: number;
+      content: string;
+    }
   | {
-    type: "completion";
-    id: number;
-    uri: string;
-    line: number;
-    character: number;
-  }
+      type: "completion";
+      id: number;
+      uri: string;
+      line: number;
+      character: number;
+    }
   | { type: "hover"; id: number; uri: string; line: number; character: number }
   | { type: "destroy"; id: number };
 

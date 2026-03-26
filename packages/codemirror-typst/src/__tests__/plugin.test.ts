@@ -75,7 +75,10 @@ describe("CompilerLintPlugin", () => {
     const compiler = mockCompiler();
     const getFiles = () => ({ "/lib.typ": "// lib" });
     const view = mockView("hello");
-    new CompilerLintPlugin({ compiler, filePath: () => "/main.typ", getFiles }, view);
+    new CompilerLintPlugin(
+      { compiler, filePath: () => "/main.typ", getFiles },
+      view,
+    );
 
     await waitFor(() => compiler.compile.mock.calls.length > 0);
     expect(compiler.compile).toHaveBeenCalledWith({

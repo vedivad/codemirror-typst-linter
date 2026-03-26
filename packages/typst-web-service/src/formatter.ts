@@ -53,7 +53,7 @@ export class TypstFormatter {
     this.config = config;
     // Eagerly start loading WASM so it's ready by first use.
     // Swallow preload errors — they'll surface on first format() call.
-    getTypstyle().catch(() => { });
+    getTypstyle().catch(() => {});
   }
 
   static create(config: FormatConfig = {}): TypstFormatter {

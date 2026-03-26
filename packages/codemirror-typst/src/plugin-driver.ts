@@ -27,7 +27,12 @@ class CompileScheduler {
   private throttleTimer: ReturnType<typeof setTimeout> | null = null;
   private lastFireTime = 0;
 
-  constructor(private readonly options: { debounceDelay?: number; throttleDelay?: number }) { }
+  constructor(
+    private readonly options: {
+      debounceDelay?: number;
+      throttleDelay?: number;
+    },
+  ) {}
 
   schedule(callback: () => void, immediate: boolean): void {
     if (this.debounceTimer) {
@@ -77,7 +82,11 @@ export class PluginDriver {
   private readonly callbacks: PluginDriverCallbacks;
 
   constructor(
-    options: { filePath?: () => string; debounceDelay?: number; throttleDelay?: number },
+    options: {
+      filePath?: () => string;
+      debounceDelay?: number;
+      throttleDelay?: number;
+    },
     callbacks: PluginDriverCallbacks,
   ) {
     this.getPath = toPathGetter(options.filePath);
@@ -111,7 +120,8 @@ export class PluginDriver {
 
   private scheduleRun(view: EditorView, immediate: boolean): void {
     this.scheduler.schedule(
-      () => this.callbacks.run(view).catch((err) => console.error("[typst]", err)),
+      () =>
+        this.callbacks.run(view).catch((err) => console.error("[typst]", err)),
       immediate,
     );
   }
