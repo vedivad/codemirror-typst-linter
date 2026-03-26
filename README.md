@@ -26,7 +26,7 @@ import {
   TypstCompiler,
 } from "@vedivad/codemirror-typst";
 
-const compiler = new TypstCompiler();
+const compiler = await TypstCompiler.create();
 
 const typstExtensions = await createTypstExtensions({
   compiler: { instance: compiler },
@@ -48,11 +48,8 @@ This gives you syntax highlighting, diagnostics, and compilation out of the box 
 
 Add formatting, LSP analysis (autocompletion, hover, push diagnostics), and live SVG preview:
 
-For multi-tab editors, create a shared `AnalyzerSession` and pass it to each editor. This avoids redundant file synchronization and keeps diagnostic subscriptions alive across tab switches.
-
 ```ts
 import {
-  AnalyzerSession,
   createTypstExtensions,
   TypstCompiler,
   TypstRenderer,
@@ -61,12 +58,13 @@ import {
 } from "@vedivad/codemirror-typst";
 import tinymistWasmUrl from "tinymist-web/pkg/tinymist_bg.wasm?url"; // Vite
 
-const compiler = new TypstCompiler();
-const renderer = new TypstRenderer();
-const formatter = new TypstFormatter({ tab_spaces: 2, max_width: 80 });
-const analyzer = new TypstAnalyzer({ wasmUrl: tinymistWasmUrl });
+const [compiler, renderer, formatter, analyzer] = await Promise.all([
+  TypstCompiler.create(),
+  TypstRenderer.create(),
+  TypstFormatter.create({ tab_spaces: 2, max_width: 80 }),
+  TypstAnalyzer.create({ wasmUrl: tinymistWasmUrl }),
+]);
 
-// Create extensions for each tab, sharing the session
 const typstExtensions = await createTypstExtensions({
   compiler: {
     instance: compiler,
@@ -79,7 +77,7 @@ const typstExtensions = await createTypstExtensions({
     debounceDelay: 300,
     throttleDelay: 2000,
   },
-  analyzer: { instance: analyzer, session },
+  analyzer: { instance: analyzer },
   formatter: { instance: formatter, formatOnSave: true },
   highlighting: { theme: "dark" },
 });
@@ -87,32 +85,33 @@ const typstExtensions = await createTypstExtensions({
 
 ### Multi-file editor
 
-For multi-file projects, each editor declares its `filePath` and provides a `getFiles` getter. Share a single `AnalyzerSession` across tabs to avoid redundant file synchronization:
+For multi-file projects, each editor declares its `filePath` and provides a `getFiles` getter. The session is managed internally per analyzer instance — just pass the same `TypstAnalyzer` to share state across tabs:
 
 ```ts
 import {
-  AnalyzerSession,
   createTypstExtensions,
   TypstAnalyzer,
   TypstCompiler,
 } from "@vedivad/codemirror-typst";
 import tinymistWasmUrl from "tinymist-web/pkg/tinymist_bg.wasm?url";
 
-const compiler = new TypstCompiler();
-const analyzer = new TypstAnalyzer({ wasmUrl: tinymistWasmUrl });
-const session = new AnalyzerSession({ analyzer });
+const [compiler, analyzer] = await Promise.all([
+  TypstCompiler.create(),
+  TypstAnalyzer.create({ wasmUrl: tinymistWasmUrl }),
+]);
 
 const files: Record<string, string> = {
   "/main.typ": "...",
   "/template.typ": "...",
 };
 
-// Create extensions for each tab, sharing the session
+let activeFile = "/main.typ";
+
 const extensions = await createTypstExtensions({
-  filePath: "/main.typ",
+  filePath: () => activeFile,
   getFiles: () => files,
   compiler: { instance: compiler },
-  analyzer: { instance: analyzer, session },
+  analyzer: { instance: analyzer },
   highlighting: { theme: "dark" },
 });
 ```
@@ -126,7 +125,7 @@ const extensions = await createTypstExtensions({
 
 ## Service classes
 
-Four independent classes, each wrapping a WASM module with lazy loading:
+Four independent classes, each created via async `create()` factory methods:
 
 | Class            | Runs on     | WASM loading            | Purpose                                                  |
 | ---------------- | ----------- | ----------------------- | -------------------------------------------------------- |
@@ -142,8 +141,8 @@ Each class is independent — import only what you need.
 ```ts
 import { TypstCompiler, TypstRenderer } from "@vedivad/codemirror-typst";
 
-const compiler = new TypstCompiler();
-const renderer = new TypstRenderer();
+const compiler = await TypstCompiler.create();
+const renderer = await TypstRenderer.create();
 
 // Single file
 const result = await compiler.compile("= Hello, Typst");
@@ -172,7 +171,7 @@ Requires a bundler that supports WASM imports (e.g. Vite + `vite-plugin-wasm`).
 ```ts
 import { TypstFormatter } from "@vedivad/codemirror-typst";
 
-const formatter = new TypstFormatter({ tab_spaces: 2, max_width: 80 });
+const formatter = await TypstFormatter.create({ tab_spaces: 2, max_width: 80 });
 const formatted = await formatter.format(source);
 const rangeResult = await formatter.formatRange(source, start, end);
 ```
@@ -201,8 +200,7 @@ How you reference the WASM depends on your bundler:
 import { TypstAnalyzer } from "@vedivad/codemirror-typst";
 import tinymistWasmUrl from "tinymist-web/pkg/tinymist_bg.wasm?url";
 
-const analyzer = new TypstAnalyzer({ wasmUrl: tinymistWasmUrl });
-await analyzer.ready;
+const analyzer = await TypstAnalyzer.create({ wasmUrl: tinymistWasmUrl });
 
 analyzer.onDiagnostics((uri, diagnostics) => {
   console.log(uri, diagnostics);
@@ -297,7 +295,7 @@ graph TD
 
 - **`TypstCompiler`** — Web Worker running the Typst WASM compiler. Handles compilation, PDF rendering, and request coalescing.
 - **`TypstAnalyzer`** — Web Worker running tinymist for LSP diagnostics, completion, and hover. Optional.
-- **`AnalyzerSession`** — Synchronizes multi-file project state with the analyzer. Handles file ordering, diagnostic subscriptions with deduplication, and combined sync+compile orchestration.
+- **`AnalyzerSession`** — Synchronizes multi-file project state with the analyzer. Handles file ordering, diagnostic subscriptions with caching, and request queueing. Managed internally per analyzer instance.
 - **`TypstRenderer`** — Converts compile vector artifacts to SVG. Main thread, lazy WASM loading.
 - **`TypstFormatter`** — Standalone formatter powered by typstyle WASM. Main thread.
 - **`codemirror-typst`** — CodeMirror 6 extensions consuming the service classes. Single diagnostics owner per mode.
