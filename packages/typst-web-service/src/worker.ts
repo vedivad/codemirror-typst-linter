@@ -57,7 +57,6 @@ function parseRange(range: string): DiagnosticMessage["range"] | null {
 
 function addSources(files: Record<string, string>): void {
   if (!compiler) throw new Error("Compiler not initialized");
-  compiler.resetShadow();
   for (const [path, source] of Object.entries(files)) {
     compiler.addSource(path, source);
   }
