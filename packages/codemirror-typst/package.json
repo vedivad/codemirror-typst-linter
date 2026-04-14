@@ -1,6 +1,6 @@
 {
   "name": "@vedivad/codemirror-typst",
-  "version": "0.7.10",
+  "version": "0.7.11",
   "description": "CodeMirror 6 extension for Typst diagnostics with incremental compilation",
   "keywords": [
     "codemirror",
