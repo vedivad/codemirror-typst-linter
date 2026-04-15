@@ -8,6 +8,10 @@ interface CompilerWorkerAPI {
     files: Record<string, string>,
   ): Promise<{ diagnostics: DiagnosticMessage[]; vector?: Uint8Array }>;
   compilePdf(files: Record<string, string>): Promise<Uint8Array>;
+  addSource(path: string, source: string): void;
+  mapShadow(path: string, content: Uint8Array): void;
+  unmapShadow(path: string): void;
+  resetShadow(): void;
   destroy(): void;
 }
 
@@ -65,6 +69,7 @@ function toFiles(
 export class TypstCompiler {
   private readonly proxy: Comlink.Remote<CompilerWorkerAPI>;
   private readonly worker: Worker;
+  private readonly encoder = new TextEncoder();
 
   /** The most recent vector artifact from a compile, if any. */
   lastVector?: Uint8Array;
@@ -106,6 +111,66 @@ export class TypstCompiler {
     source: string | Record<string, string>,
   ): Promise<Uint8Array> {
     return this.proxy.compilePdf(toFiles(source));
+  }
+
+  /** Add or overwrite a text source file. */
+  async addSource(path: string, source: string): Promise<void> {
+    await this.proxy.addSource(path, source);
+  }
+
+  /** Add or overwrite an in-memory shadow file (text or binary). */
+  async mapShadow(path: string, content: Uint8Array): Promise<void> {
+    await this.proxy.mapShadow(path, content);
+  }
+
+  /** Remove an in-memory shadow file by path. */
+  async unmapShadow(path: string): Promise<void> {
+    await this.proxy.unmapShadow(path);
+  }
+
+  /**
+   * Clear all shadow files held by the compiler.
+   * Note: this also clears files previously added via addSource in the compiler runtime.
+   */
+  async resetShadow(): Promise<void> {
+    await this.proxy.resetShadow();
+  }
+
+  /** Add or overwrite a text file in the virtual compiler filesystem. */
+  async setText(path: string, source: string): Promise<void> {
+    await this.mapShadow(path, this.encoder.encode(source));
+  }
+
+  /** Add or overwrite a JSON file in the virtual compiler filesystem. */
+  async setJson(
+    path: string,
+    value: unknown,
+    replacer?: (this: unknown, key: string, value: unknown) => unknown,
+    space?: string | number,
+  ): Promise<void> {
+    await this.setText(path, JSON.stringify(value, replacer, space));
+  }
+
+  /** Add or overwrite a binary file in the virtual compiler filesystem. */
+  async setBinary(
+    path: string,
+    content: ArrayBuffer | ArrayBufferView,
+  ): Promise<void> {
+    const bytes =
+      content instanceof ArrayBuffer
+        ? new Uint8Array(content)
+        : new Uint8Array(content.buffer, content.byteOffset, content.byteLength);
+    await this.mapShadow(path, bytes);
+  }
+
+  /** Remove a file from the virtual compiler filesystem. */
+  async remove(path: string): Promise<void> {
+    await this.unmapShadow(path);
+  }
+
+  /** Clear all virtual files from the compiler filesystem. */
+  async clear(): Promise<void> {
+    await this.resetShadow();
   }
 
   destroy(): void {

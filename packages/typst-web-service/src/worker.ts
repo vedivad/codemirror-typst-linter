@@ -103,6 +103,26 @@ class CompilerWorker {
     ]);
   }
 
+  addSource(path: string, source: string): void {
+    if (!this.compiler) throw new Error("Compiler not initialized");
+    this.compiler.addSource(path, source);
+  }
+
+  mapShadow(path: string, content: Uint8Array): void {
+    if (!this.compiler) throw new Error("Compiler not initialized");
+    this.compiler.mapShadow(path, content);
+  }
+
+  unmapShadow(path: string): void {
+    if (!this.compiler) throw new Error("Compiler not initialized");
+    this.compiler.unmapShadow(path);
+  }
+
+  resetShadow(): void {
+    if (!this.compiler) throw new Error("Compiler not initialized");
+    this.compiler.resetShadow();
+  }
+
   destroy(): void {
     this.compiler = null;
   }
