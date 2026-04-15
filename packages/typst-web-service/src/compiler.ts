@@ -159,7 +159,11 @@ export class TypstCompiler {
     const bytes =
       content instanceof ArrayBuffer
         ? new Uint8Array(content)
-        : new Uint8Array(content.buffer, content.byteOffset, content.byteLength);
+        : new Uint8Array(
+            content.buffer,
+            content.byteOffset,
+            content.byteLength,
+          );
     await this.mapShadow(path, bytes);
   }
 

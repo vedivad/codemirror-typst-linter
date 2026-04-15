@@ -25,16 +25,33 @@ class AnalyzerWorker {
     }
   }
 
-  async init(wasmUrl: string, onDiagnostics: DiagnosticsCallback): Promise<void> {
+  async init(
+    wasmUrl: string,
+    onDiagnostics: DiagnosticsCallback,
+  ): Promise<void> {
     this.onDiagnostics = onDiagnostics;
     await init(wasmUrl);
 
     this.server = new TinymistLanguageServer({
-      sendEvent: (event: any): void => { this.events.push(event); },
-      sendRequest: ({ id }: { id: number; method: string; params: unknown }): void => {
+      sendEvent: (event: any): void => {
+        this.events.push(event);
+      },
+      sendRequest: ({
+        id,
+      }: {
+        id: number;
+        method: string;
+        params: unknown;
+      }): void => {
         this.server!.on_response({ id, result: null });
       },
-      sendNotification: ({ method, params }: { method: string; params: unknown }): void => {
+      sendNotification: ({
+        method,
+        params,
+      }: {
+        method: string;
+        params: unknown;
+      }): void => {
         if (method === "textDocument/publishDiagnostics") {
           const { uri, diagnostics } = params as {
             uri: string;
@@ -82,7 +99,11 @@ class AnalyzerWorker {
     this.flushEvents();
   }
 
-  async didChange(uri: string, version: number, content: string): Promise<void> {
+  async didChange(
+    uri: string,
+    version: number,
+    content: string,
+  ): Promise<void> {
     if (!this.server) throw new Error("Analyzer not initialized");
     this.server.on_notification("textDocument/didChange", {
       textDocument: { uri, version },
@@ -91,7 +112,11 @@ class AnalyzerWorker {
     this.flushEvents();
   }
 
-  async completion(uri: string, line: number, character: number): Promise<unknown> {
+  async completion(
+    uri: string,
+    line: number,
+    character: number,
+  ): Promise<unknown> {
     if (!this.server) throw new Error("Analyzer not initialized");
     const result = this.server.on_request("textDocument/completion", {
       textDocument: { uri },

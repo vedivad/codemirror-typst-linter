@@ -85,7 +85,10 @@ Pass a `filePath` getter and `getFiles` for multi-file projects. Share the same 
 
 ```ts
 let activeFile = "/main.typ";
-const files: Record<string, string> = { "/main.typ": "...", "/template.typ": "..." };
+const files: Record<string, string> = {
+  "/main.typ": "...",
+  "/template.typ": "...",
+};
 
 const extensions = await createTypstExtensions({
   filePath: () => activeFile,

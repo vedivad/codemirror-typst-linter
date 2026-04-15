@@ -78,19 +78,27 @@ analyzer.onDiagnostics((uri, diagnostics) => {
 });
 
 await analyzer.didChange("untitled:project/main.typ", source);
-const completions = await analyzer.completion("untitled:project/main.typ", line, character);
-const hover = await analyzer.hover("untitled:project/main.typ", line, character);
+const completions = await analyzer.completion(
+  "untitled:project/main.typ",
+  line,
+  character,
+);
+const hover = await analyzer.hover(
+  "untitled:project/main.typ",
+  line,
+  character,
+);
 
 analyzer.destroy();
 ```
 
 ## Service classes
 
-| Class            | Runs on     | WASM loading            | Purpose                                                   |
-| ---------------- | ----------- | ----------------------- | --------------------------------------------------------- |
+| Class            | Runs on     | WASM loading            | Purpose                                                    |
+| ---------------- | ----------- | ----------------------- | ---------------------------------------------------------- |
 | `TypstCompiler`  | Web Worker  | CDN (automatic)         | `compile()` -> diagnostics + vector, `compilePdf()` -> PDF |
 | `TypstRenderer`  | Main thread | CDN (automatic)         | `renderSvg(vector)` -> SVG string                          |
-| `TypstFormatter` | Main thread | Bundler (static import) | `format(source)`, `formatRange(source, start, end)`       |
+| `TypstFormatter` | Main thread | Bundler (static import) | `format(source)`, `formatRange(source, start, end)`        |
 | `TypstAnalyzer`  | Web Worker  | User-provided `wasmUrl` | LSP diagnostics, completion, hover via tinymist            |
 
 ## License
