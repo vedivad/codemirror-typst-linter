@@ -1,9 +1,15 @@
-import { createWorker, destroyWorker, workerRpc } from "./rpc.js";
-import type {
-  DiagnosticMessage,
-  WorkerRequest,
-  WorkerResponse,
-} from "./types.js";
+import * as Comlink from "comlink";
+import { createWorker } from "./rpc.js";
+import type { DiagnosticMessage } from "./types.js";
+
+interface CompilerWorkerAPI {
+  init(wasmUrl: string, fontUrls: string[], packages: boolean): Promise<void>;
+  compile(
+    files: Record<string, string>,
+  ): Promise<{ diagnostics: DiagnosticMessage[]; vector?: Uint8Array }>;
+  compilePdf(files: Record<string, string>): Promise<Uint8Array>;
+  destroy(): void;
+}
 
 export interface CompileResult {
   diagnostics: DiagnosticMessage[];
@@ -41,8 +47,6 @@ const DEFAULT_FONTS = [
 const DEFAULT_WASM_URL =
   "https://cdn.jsdelivr.net/npm/@myriaddreamin/typst-ts-web-compiler@0.7.0-rc2/pkg/typst_ts_web_compiler_bg.wasm";
 
-const TIMEOUT = { INIT: 60_000, RENDER: 60_000, DESTROY: 5_000 } as const;
-
 function toFiles(
   source: string | Record<string, string>,
 ): Record<string, string> {
@@ -59,90 +63,53 @@ function toFiles(
  *   await TypstCompiler.create({ worker: myWorker, fonts: [...] }) // explicit Worker + options
  */
 export class TypstCompiler {
-  private idCounter: number;
-  private worker: Worker;
+  private readonly proxy: Comlink.Remote<CompilerWorkerAPI>;
+  private readonly worker: Worker;
 
   /** The most recent vector artifact from a compile, if any. */
   lastVector?: Uint8Array;
 
-  private constructor(worker: Worker, idCounter: number) {
+  private constructor(
+    worker: Worker,
+    proxy: Comlink.Remote<CompilerWorkerAPI>,
+  ) {
     this.worker = worker;
-    this.idCounter = idCounter;
+    this.proxy = proxy;
   }
 
   static async create(
     options: TypstCompilerOptions = {},
   ): Promise<TypstCompiler> {
     const worker = options.worker ?? createWorker();
-    let idCounter = 0;
+    const proxy = Comlink.wrap<CompilerWorkerAPI>(worker);
 
-    const res = await workerRpc<WorkerRequest, WorkerResponse>(
-      worker,
-      {
-        type: "init",
-        id: ++idCounter,
-        wasmUrl: options.wasmUrl ?? DEFAULT_WASM_URL,
-        fonts: options.fonts ?? DEFAULT_FONTS,
-        packages: options.packages ?? true,
-      },
-      TIMEOUT.INIT,
+    await proxy.init(
+      options.wasmUrl ?? DEFAULT_WASM_URL,
+      options.fonts ?? DEFAULT_FONTS,
+      options.packages ?? true,
     );
-    if (res.type === "error")
-      throw new Error(`TypstCompiler init failed: ${res.message}`);
 
-    return new TypstCompiler(worker, idCounter);
+    return new TypstCompiler(worker, proxy);
   }
 
   /** Compile a single source string (treated as /main.typ) or a map of files. */
   async compile(
     source: string | Record<string, string>,
   ): Promise<CompileResult> {
-    const id = ++this.idCounter;
-    const files = toFiles(source);
-    const response = await workerRpc<WorkerRequest, WorkerResponse>(
-      this.worker,
-      {
-        type: "compile",
-        id,
-        files,
-      },
-    );
-    if (response.type === "cancelled") return { diagnostics: [] };
-    if (response.type === "result") {
-      const vector = response.vector
-        ? new Uint8Array(response.vector)
-        : undefined;
-      if (vector) this.lastVector = vector;
-      return { diagnostics: response.diagnostics, vector };
-    }
-    if (response.type === "error") throw new Error(response.message);
-    return { diagnostics: [] };
+    const result = await this.proxy.compile(toFiles(source));
+    if (result.vector) this.lastVector = result.vector;
+    return result;
   }
 
   /** Compile to PDF from a single source string (treated as /main.typ) or a map of files. */
   async compilePdf(
     source: string | Record<string, string>,
   ): Promise<Uint8Array> {
-    const id = ++this.idCounter;
-    const files = toFiles(source);
-    const response = await workerRpc<WorkerRequest, WorkerResponse>(
-      this.worker,
-      { type: "render", id, files },
-      TIMEOUT.RENDER,
-    );
-    if (response.type === "cancelled") throw new Error("Render cancelled");
-    if (response.type === "pdf") return new Uint8Array(response.data);
-    if (response.type === "error") throw new Error(response.message);
-    throw new Error("Unexpected response type");
+    return this.proxy.compilePdf(toFiles(source));
   }
 
   destroy(): void {
-    const id = ++this.idCounter;
-    destroyWorker(
-      this.worker,
-      { type: "destroy" as const, id },
-      TIMEOUT.DESTROY,
-      "TypstCompiler",
-    );
+    this.proxy[Comlink.releaseProxy]();
+    this.worker.terminate();
   }
 }

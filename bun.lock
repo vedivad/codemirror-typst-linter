@@ -33,7 +33,7 @@
     },
     "packages/codemirror-typst": {
       "name": "@vedivad/codemirror-typst",
-      "version": "0.5.3",
+      "version": "0.7.11",
       "dependencies": {
         "@vedivad/typst-web-service": "workspace:*",
         "codemirror-shiki": "^0.3.0",
@@ -57,12 +57,13 @@
     },
     "packages/typst-web-service": {
       "name": "@vedivad/typst-web-service",
-      "version": "0.5.3",
+      "version": "0.7.11",
       "dependencies": {
         "@myriaddreamin/typst-ts-renderer": "^0.7.0-rc2",
         "@myriaddreamin/typst-ts-web-compiler": "^0.7.0-rc2",
         "@myriaddreamin/typst.ts": "^0.7.0-rc2",
         "@typstyle/typstyle-wasm-bundler": "^0.14.4",
+        "comlink": "^4.4.2",
         "tinymist-web": "https://github.com/Myriad-Dreamin/tinymist/releases/download/v0.14.10/tinymist-web.tar.gz",
       },
       "devDependencies": {
@@ -392,6 +393,8 @@
     "codemirror-shiki": ["codemirror-shiki@0.3.0", "", { "peerDependencies": { "@codemirror/state": "^6", "@codemirror/view": "^6", "shiki": ">=2.0.0" } }, "sha512-KSrfcm8RNSgTl3+Vgq+HuGA/bQGbxBMGosoFXL77yWc6r8JjLygIBndqL9evCv2ED9EOoeZozROcXNanN7Mabg=="],
 
     "codemirror-typst-demo": ["codemirror-typst-demo@workspace:demo"],
+
+    "comlink": ["comlink@4.4.2", "", {}, "sha512-OxGdvBmJuNKSCMO4NTl1L47VRp6xn2wG4F/2hYzB6tiCb709otOxtEYCSvK80PtjODfXXZu8ds+Nw5kVCjqd2g=="],
 
     "comma-separated-tokens": ["comma-separated-tokens@2.0.3", "", {}, "sha512-Fu4hJdvzeylCfQPp9SGWidpzrMs7tTrlu6Vb8XGaRGck8QSNZJJp538Wrb60Lax4fPwR64ViY468OIUTbRlGZg=="],
 

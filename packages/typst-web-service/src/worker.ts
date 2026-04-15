@@ -1,166 +1,111 @@
+import * as Comlink from "comlink";
 import {
   CompileFormatEnum,
   createTypstCompiler,
   type TypstCompiler,
 } from "@myriaddreamin/typst.ts/compiler";
 import { MemoryAccessModel } from "@myriaddreamin/typst.ts/fs/memory";
-
 import { FetchPackageRegistry } from "@myriaddreamin/typst.ts/fs/package";
 import {
   loadFonts,
   withAccessModel,
   withPackageRegistry,
 } from "@myriaddreamin/typst.ts/options.init";
-
-import { makeQueue } from "./queue.js";
-import type {
-  DiagnosticMessage,
-  WorkerRequest,
-  WorkerResponse,
-} from "./types.js";
-import { postError } from "./worker-utils.js";
+import type { DiagnosticMessage } from "./types.js";
 
 const MAIN_FILE = "/main.typ";
 
-const accessModel = new MemoryAccessModel();
-const packageRegistry = new FetchPackageRegistry(accessModel);
+class CompilerWorker {
+  private compiler: TypstCompiler | null = null;
+  private readonly accessModel = new MemoryAccessModel();
+  private readonly packageRegistry: FetchPackageRegistry;
 
-let compiler: TypstCompiler | null = null;
+  constructor() {
+    this.packageRegistry = new FetchPackageRegistry(this.accessModel);
+  }
 
-async function initCompiler(
-  wasmUrl: string,
-  fontUrls: string[],
-  packages: boolean,
-): Promise<void> {
-  compiler = createTypstCompiler();
-  await compiler.init({
-    getModule: () => wasmUrl,
-    beforeBuild: [
-      loadFonts(fontUrls),
-      ...(packages
-        ? [withAccessModel(accessModel), withPackageRegistry(packageRegistry)]
-        : []),
-    ],
-  });
-}
+  async init(
+    wasmUrl: string,
+    fontUrls: string[],
+    packages: boolean,
+  ): Promise<void> {
+    this.compiler = createTypstCompiler();
+    await this.compiler.init({
+      getModule: () => wasmUrl,
+      beforeBuild: [
+        loadFonts(fontUrls),
+        ...(packages
+          ? [
+              withAccessModel(this.accessModel),
+              withPackageRegistry(this.packageRegistry),
+            ]
+          : []),
+      ],
+    });
+  }
 
-function parseRange(range: string): DiagnosticMessage["range"] | null {
-  const m = range.match(/(\d+):(\d+)-(\d+):(\d+)/);
-  if (!m) {
-    console.warn(
-      `[typst-web-service] Skipping diagnostic with unrecognized range format: ${JSON.stringify(range)}`,
+  async compile(
+    files: Record<string, string>,
+  ): Promise<{ diagnostics: DiagnosticMessage[]; vector?: Uint8Array }> {
+    if (!this.compiler) throw new Error("Compiler not initialized");
+    for (const [path, source] of Object.entries(files)) {
+      this.compiler.addSource(path, source);
+    }
+    const result = await this.compiler.compile({
+      mainFilePath: MAIN_FILE,
+      diagnostics: "full",
+    });
+    const diagnostics: DiagnosticMessage[] = (result.diagnostics ?? []).flatMap(
+      (d) => {
+        const m = d.range.match(/(\d+):(\d+)-(\d+):(\d+)/);
+        if (!m) {
+          console.warn(
+            `[typst-web-service] Skipping diagnostic with unrecognized range format: ${JSON.stringify(d.range)}`,
+          );
+          return [];
+        }
+        return [
+          {
+            ...d,
+            severity: d.severity as DiagnosticMessage["severity"],
+            range: {
+              startLine: +m[1],
+              startCol: +m[2],
+              endLine: +m[3],
+              endCol: +m[4],
+            },
+          },
+        ];
+      },
     );
-    return null;
+    const vector = result.result ?? undefined;
+    if (vector) {
+      return Comlink.transfer({ diagnostics, vector }, [
+        vector.buffer as ArrayBuffer,
+      ]);
+    }
+    return { diagnostics };
   }
-  return { startLine: +m[1], startCol: +m[2], endLine: +m[3], endCol: +m[4] };
-}
 
-function addSources(files: Record<string, string>): void {
-  if (!compiler) throw new Error("Compiler not initialized");
-  for (const [path, source] of Object.entries(files)) {
-    compiler.addSource(path, source);
-  }
-}
-
-async function compile(
-  files: Record<string, string>,
-): Promise<{ diagnostics: DiagnosticMessage[]; vector?: Uint8Array }> {
-  addSources(files);
-  const result = await compiler!.compile({
-    mainFilePath: MAIN_FILE,
-    diagnostics: "full",
-  });
-  const diagnostics: DiagnosticMessage[] = (result.diagnostics ?? []).flatMap(
-    (d) => {
-      const range = parseRange(d.range);
-      if (!range) return [];
-      return [
-        { ...d, severity: d.severity as DiagnosticMessage["severity"], range },
-      ];
-    },
-  );
-  return { diagnostics, vector: result.result ?? undefined };
-}
-
-function transferBuffer(data: Uint8Array): ArrayBuffer {
-  // data.buffer is ArrayBuffer in a Worker context (not SharedArrayBuffer)
-  return (data.buffer as ArrayBuffer).slice(
-    data.byteOffset,
-    data.byteOffset + data.byteLength,
-  );
-}
-
-type CompileRequest = Extract<WorkerRequest, { type: "compile" }>;
-type RenderRequest = Extract<WorkerRequest, { type: "render" }>;
-
-function postCancelled(req: { id: number }): void {
-  self.postMessage({
-    type: "cancelled",
-    id: req.id,
-  } satisfies WorkerResponse);
-}
-
-const enqueueCompile = makeQueue<CompileRequest>(async (req) => {
-  try {
-    const { diagnostics, vector: vectorData } = await compile(req.files);
-    const vector = vectorData ? transferBuffer(vectorData) : undefined;
-    const msg: WorkerResponse = {
-      type: "result",
-      id: req.id,
-      diagnostics,
-      vector,
-    };
-    self.postMessage(msg, vector ? [vector] : []);
-  } catch (err) {
-    postError(req.id, err);
-  }
-}, postCancelled);
-
-const enqueueRender = makeQueue<RenderRequest>(async (req) => {
-  try {
-    addSources(req.files);
-    const result = await compiler!.compile({
+  async compilePdf(files: Record<string, string>): Promise<Uint8Array> {
+    if (!this.compiler) throw new Error("Compiler not initialized");
+    for (const [path, source] of Object.entries(files)) {
+      this.compiler.addSource(path, source);
+    }
+    const result = await this.compiler.compile({
       mainFilePath: MAIN_FILE,
       format: CompileFormatEnum.pdf,
       diagnostics: "none",
     });
     if (!result.result) throw new Error("Compilation produced no output");
-    const data = transferBuffer(result.result);
-    self.postMessage(
-      { type: "pdf", id: req.id, data } satisfies WorkerResponse,
-      [data],
-    );
-  } catch (err) {
-    postError(req.id, err);
-  }
-}, postCancelled);
-
-self.onmessage = async (e: MessageEvent<WorkerRequest>) => {
-  const req = e.data;
-
-  if (req.type === "init") {
-    try {
-      await initCompiler(req.wasmUrl, req.fonts, req.packages);
-      self.postMessage({ type: "ready", id: req.id } satisfies WorkerResponse);
-    } catch (err) {
-      postError(req.id, err);
-    }
-    return;
+    return Comlink.transfer(result.result, [
+      result.result.buffer as ArrayBuffer,
+    ]);
   }
 
-  if (req.type === "compile") {
-    enqueueCompile(req);
-    return;
+  destroy(): void {
+    this.compiler = null;
   }
-  if (req.type === "render") {
-    enqueueRender(req);
-    return;
-  }
+}
 
-  if (req.type === "destroy") {
-    self.postMessage({
-      type: "destroyed",
-      id: req.id,
-    } satisfies WorkerResponse);
-  }
-};
+Comlink.expose(new CompilerWorker());

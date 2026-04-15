@@ -1,11 +1,6 @@
-import type {
-  AnalyzerDiagnosticEvent,
-  AnalyzerMessage,
-  AnalyzerRequest,
-  AnalyzerResponse,
-  LspDiagnostic,
-} from "./analyzer-types.js";
-import { createAnalyzerWorker, destroyWorker, workerRpc } from "./rpc.js";
+import * as Comlink from "comlink";
+import type { LspDiagnostic } from "./analyzer-types.js";
+import { createAnalyzerWorker } from "./rpc.js";
 import { normalizeUntitledUri } from "./uri.js";
 
 export type { LspDiagnostic };
@@ -29,7 +24,18 @@ export interface TypstAnalyzerOptions {
   wasmUrl: string;
 }
 
-const TIMEOUT = { INIT: 120_000, REQUEST: 30_000, DESTROY: 5_000 } as const;
+interface AnalyzerWorkerAPI {
+  init(
+    wasmUrl: string,
+    onDiagnostics: (uri: string, diagnostics: LspDiagnostic[]) => void,
+  ): Promise<void>;
+  didOpen(uri: string, content: string): Promise<void>;
+  didClose(uri: string): Promise<void>;
+  didChange(uri: string, version: number, content: string): Promise<void>;
+  completion(uri: string, line: number, character: number): Promise<unknown>;
+  hover(uri: string, line: number, character: number): Promise<unknown>;
+  destroy(): void;
+}
 
 /**
  * Manages a tinymist language server in a Web Worker. Provides LSP-based
@@ -43,46 +49,39 @@ const TIMEOUT = { INIT: 120_000, REQUEST: 30_000, DESTROY: 5_000 } as const;
  *   analyzer.onDiagnostics((uri, diags) => { ... });
  */
 export class TypstAnalyzer {
-  private idCounter: number;
+  private readonly proxy: Comlink.Remote<AnalyzerWorkerAPI>;
+  private readonly worker: Worker;
   private versionCounter = 0;
-  private worker: Worker;
   private openedUris = new Set<string>();
   private diagnosticsListeners = new Set<DiagnosticsListener>();
 
-  private constructor(worker: Worker, idCounter: number) {
+  private constructor(
+    worker: Worker,
+    proxy: Comlink.Remote<AnalyzerWorkerAPI>,
+  ) {
     this.worker = worker;
-    this.idCounter = idCounter;
-
-    // Listen for unsolicited diagnostic push notifications from the worker.
-    this.worker.addEventListener(
-      "message",
-      (e: MessageEvent<AnalyzerMessage>) => {
-        if (e.data.type === "diagnostics" && !("id" in e.data)) {
-          const event = e.data as AnalyzerDiagnosticEvent;
-          const normalizedUri = normalizeUntitledUri(event.uri);
-          for (const listener of this.diagnosticsListeners) {
-            listener(normalizedUri, event.diagnostics);
-          }
-        }
-      },
-    );
+    this.proxy = proxy;
   }
 
   static async create(options: TypstAnalyzerOptions): Promise<TypstAnalyzer> {
     const worker = options.worker ?? createAnalyzerWorker();
-    let idCounter = 0;
+    const proxy = Comlink.wrap<AnalyzerWorkerAPI>(worker);
     const absoluteWasmUrl = new URL(options.wasmUrl, globalThis.location?.href)
       .href;
 
-    const res = await workerRpc<AnalyzerRequest, AnalyzerResponse>(
-      worker,
-      { type: "init", id: ++idCounter, wasmUrl: absoluteWasmUrl },
-      TIMEOUT.INIT,
-    );
-    if (res.type === "error")
-      throw new Error(`TypstAnalyzer init failed: ${res.message}`);
+    const analyzer = new TypstAnalyzer(worker, proxy);
 
-    return new TypstAnalyzer(worker, idCounter);
+    await proxy.init(
+      absoluteWasmUrl,
+      Comlink.proxy((uri: string, diagnostics: LspDiagnostic[]) => {
+        const normalizedUri = normalizeUntitledUri(uri);
+        for (const listener of analyzer.diagnosticsListeners) {
+          listener(normalizedUri, diagnostics);
+        }
+      }),
+    );
+
+    return analyzer;
   }
 
   /**
@@ -94,32 +93,14 @@ export class TypstAnalyzer {
     return () => this.diagnosticsListeners.delete(listener);
   }
 
-  private rpc(
-    request: AnalyzerRequest,
-    timeoutMs: number = TIMEOUT.REQUEST,
-  ): Promise<AnalyzerResponse> {
-    return workerRpc(this.worker, request, timeoutMs);
-  }
-
   async didOpen(uri: string, content: string): Promise<void> {
-    const res = await this.rpc({
-      type: "didOpen",
-      id: ++this.idCounter,
-      uri,
-      content,
-    });
-    if (res.type === "error") throw new Error(res.message);
+    await this.proxy.didOpen(uri, content);
     this.openedUris.add(uri);
   }
 
   async didClose(uri: string): Promise<void> {
     if (!this.openedUris.has(uri)) return;
-    const res = await this.rpc({
-      type: "didClose",
-      id: ++this.idCounter,
-      uri,
-    });
-    if (res.type === "error") throw new Error(res.message);
+    await this.proxy.didClose(uri);
     this.openedUris.delete(uri);
   }
 
@@ -132,16 +113,8 @@ export class TypstAnalyzer {
       await this.didOpen(uri, content);
       return;
     }
-
     const version = ++this.versionCounter;
-    const res = await this.rpc({
-      type: "didChange",
-      id: ++this.idCounter,
-      uri,
-      version,
-      content,
-    });
-    if (res.type === "error") throw new Error(res.message);
+    await this.proxy.didChange(uri, version, content);
   }
 
   async completion(
@@ -149,38 +122,16 @@ export class TypstAnalyzer {
     line: number,
     character: number,
   ): Promise<unknown> {
-    const res = await this.rpc({
-      type: "completion",
-      id: ++this.idCounter,
-      uri,
-      line,
-      character,
-    });
-    if (res.type === "error") throw new Error(res.message);
-    if (res.type === "completionResult") return res.result;
-    return null;
+    return this.proxy.completion(uri, line, character);
   }
 
   async hover(uri: string, line: number, character: number): Promise<unknown> {
-    const res = await this.rpc({
-      type: "hover",
-      id: ++this.idCounter,
-      uri,
-      line,
-      character,
-    });
-    if (res.type === "error") throw new Error(res.message);
-    if (res.type === "hoverResult") return res.result;
-    return null;
+    return this.proxy.hover(uri, line, character);
   }
 
   destroy(): void {
     this.diagnosticsListeners.clear();
-    destroyWorker(
-      this.worker,
-      { type: "destroy" as const, id: ++this.idCounter },
-      TIMEOUT.DESTROY,
-      "TypstAnalyzer",
-    );
+    this.proxy[Comlink.releaseProxy]();
+    this.worker.terminate();
   }
 }
