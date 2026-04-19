@@ -75,21 +75,17 @@ async function formatDocument(
   }
 }
 
-interface RunFormatOptions {
-  selectionOnlyWhenActive: boolean;
-  onFormatted?: () => void;
-  onError?: (error: Error) => void;
-}
-
 async function runFormat(
   view: EditorView,
   formatter: TypstFormatter,
-  options: RunFormatOptions,
+  selectionOnlyWhenActive: boolean,
+  onFormatted?: () => void,
+  onError?: (error: Error) => void,
 ): Promise<void> {
   try {
     const { from, to } = view.state.selection.main;
 
-    if (options.selectionOnlyWhenActive && from !== to) {
+    if (selectionOnlyWhenActive && from !== to) {
       const doc = view.state.doc.toString();
       const result = await formatter.formatRange(doc, from, to);
       view.dispatch({
@@ -97,10 +93,10 @@ async function runFormat(
       });
     } else {
       await formatDocument(view, formatter);
-      options.onFormatted?.();
+      onFormatted?.();
     }
   } catch (error) {
-    handleError(error, options.onError);
+    handleError(error, onError);
   }
 }
 
@@ -122,15 +118,14 @@ export function createTypstFormatter(
     formatOnSave,
     onError,
   } = options;
+  const onSaveFormatted =
+    typeof formatOnSave === "function" ? formatOnSave : undefined;
 
   const keys = [
     {
       key: keybinding,
       run: (view: EditorView) => {
-        runFormat(view, formatter, {
-          selectionOnlyWhenActive: true,
-          onError,
-        });
+        runFormat(view, formatter, true, undefined, onError);
         return true;
       },
     },
@@ -140,14 +135,15 @@ export function createTypstFormatter(
     keys.push({
       key: "Mod-s",
       run: (view: EditorView) => {
-        runFormat(view, formatter, {
-          selectionOnlyWhenActive: false,
-          onFormatted:
-            typeof formatOnSave === "function"
-              ? () => formatOnSave(view.state.doc.toString())
-              : undefined,
+        runFormat(
+          view,
+          formatter,
+          false,
+          onSaveFormatted
+            ? () => onSaveFormatted(view.state.doc.toString())
+            : undefined,
           onError,
-        });
+        );
         return true;
       },
     });
