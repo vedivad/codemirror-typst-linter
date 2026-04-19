@@ -29,7 +29,7 @@ function waitFor(fn: () => boolean, timeout = 1000): Promise<void> {
 }
 
 describe("CompilerLintPlugin", () => {
-  it("returns diagnostics filtered by file path", async () => {
+  it("returns project-wide diagnostics via onCompile", async () => {
     const diags: DiagnosticMessage[] = [
       {
         package: "",
@@ -47,32 +47,28 @@ describe("CompilerLintPlugin", () => {
       },
     ];
     const project = mockProject(diags);
-    const onDiagnostics = vi.fn();
+    const onCompile = vi.fn();
     const view = mockView("abc");
-    new CompilerLintPlugin({ project, onDiagnostics }, view);
+    new CompilerLintPlugin({ project, onCompile }, view);
 
-    await waitFor(() => onDiagnostics.mock.calls.length > 0);
-    expect(onDiagnostics).toHaveBeenCalledWith(
-      expect.arrayContaining([expect.objectContaining({ message: "bad" })]),
+    await waitFor(() => onCompile.mock.calls.length > 0);
+    expect(onCompile).toHaveBeenCalledWith(
+      expect.objectContaining({ diagnostics: diags }),
     );
-    expect(onDiagnostics.mock.calls[0][0]).toHaveLength(1);
   });
 
-  it("returns error diagnostic when compile throws", async () => {
+  it("dispatches an error diagnostic when compile throws", async () => {
     const project = {
       hasAnalyzer: false,
       setText: vi.fn().mockResolvedValue(undefined),
       compile: vi.fn().mockRejectedValue(new Error("boom")),
     } as any;
-    const onDiagnostics = vi.fn();
+    const onCompile = vi.fn();
     const view = mockView("x");
-    new CompilerLintPlugin({ project, onDiagnostics }, view);
+    new CompilerLintPlugin({ project, onCompile }, view);
 
-    await waitFor(() => onDiagnostics.mock.calls.length > 0);
-    const result = onDiagnostics.mock.calls[0][0];
-    expect(result).toHaveLength(1);
-    expect(result[0].severity).toBe("error");
-    expect(result[0].message).toBe("boom");
+    await waitFor(() => view.dispatch.mock.calls.length > 0);
+    expect(onCompile).not.toHaveBeenCalled();
   });
 
   it("pushes the editor's content to the project before compiling", async () => {

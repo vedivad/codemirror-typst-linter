@@ -1,5 +1,5 @@
 import { autocompletion } from "@codemirror/autocomplete";
-import { type Diagnostic, lintGutter } from "@codemirror/lint";
+import { lintGutter } from "@codemirror/lint";
 import type { Extension } from "@codemirror/state";
 import { ViewPlugin } from "@codemirror/view";
 import type { CompileResult, TypstProject } from "@vedivad/typst-web-service";
@@ -53,9 +53,10 @@ export interface TypstExtensionsOptions {
   project: TypstProject;
   /** File path this editor represents. Default: () => "/main.typ" */
   filePath?: () => string;
-  /** Called after each lint pass with the resulting diagnostics. */
-  onDiagnostics?: (diagnostics: Diagnostic[]) => void;
-  /** Called after each successful compile with the full result (e.g. for SVG preview). */
+  /**
+   * Called after each successful compile with the full result.
+   * `result.diagnostics` always contains project-wide diagnostics for all files.
+   */
   onCompile?: (result: CompileResult) => void;
   /**
    * Debounce delay in ms. Resets on every keystroke and fires once typing pauses.
@@ -90,14 +91,13 @@ export interface TypstExtensionsOptions {
  *   onCompile: (r) => { ... },
  *   formatter: { instance: formatter, formatOnSave: true },
  *   highlighting: { theme: "dark" },
- *   onDiagnostics: (d) => { ... },
  * });
  * ```
  */
 export async function createTypstExtensions(
   options: TypstExtensionsOptions,
 ): Promise<Extension[]> {
-  const { project, filePath, onDiagnostics, onCompile } = options;
+  const { project, filePath, onCompile } = options;
 
   const shiki = await createTypstShikiHighlighting(options.highlighting);
 
@@ -114,7 +114,6 @@ export async function createTypstExtensions(
           throttleDelay,
           filePath,
           onCompile,
-          onDiagnostics,
         },
         view,
       ),

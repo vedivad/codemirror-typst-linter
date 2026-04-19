@@ -47,7 +47,6 @@ export class CompilerLintPlugin {
         .filter((d) => d.path === path)
         .map((d) => toCMDiagnostic(view.state, d));
 
-      this.options.onDiagnostics?.(diagnostics);
       try {
         view.dispatch(setDiagnostics(view.state, diagnostics));
       } catch {
@@ -66,7 +65,6 @@ export class CompilerLintPlugin {
         },
       ];
 
-      this.options.onDiagnostics?.(diagnostics);
       try {
         view.dispatch(setDiagnostics(view.state, diagnostics));
       } catch {

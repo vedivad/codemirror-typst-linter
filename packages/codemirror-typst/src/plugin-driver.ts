@@ -1,4 +1,3 @@
-import type { Diagnostic } from "@codemirror/lint";
 import type { EditorView, ViewUpdate } from "@codemirror/view";
 import type { CompileResult } from "@vedivad/typst-web-service";
 import { toPathGetter } from "./utils.js";
@@ -10,9 +9,8 @@ export interface BasePluginOptions {
   debounceDelay?: number;
   /** Throttle delay in ms — guarantees a run at least this often during continuous typing. */
   throttleDelay?: number;
-  /** Called after each successful compile with the full result. */
+  /** Called after each successful compile with the full result (including project-wide diagnostics). */
   onCompile?: (result: CompileResult) => void;
-  onDiagnostics?: (diagnostics: Diagnostic[]) => void;
 }
 
 interface PluginDriverCallbacks {

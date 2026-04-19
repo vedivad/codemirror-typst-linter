@@ -44,6 +44,7 @@ const typstExtensions = await createTypstExtensions({
   project,
   filePath: () => activeFile,
   onCompile: async (result) => {
+    updateDiagnostics(diagnosticsEl, result.diagnostics);
     if (result.vector) {
       const svg = await renderer.renderSvg(result.vector);
       previewEl.innerHTML = `<div class="svg-container">${svg}</div>`;
@@ -51,9 +52,6 @@ const typstExtensions = await createTypstExtensions({
   },
   formatter: { instance: formatter, formatOnSave: true },
   highlighting: { theme: "dark" },
-  onDiagnostics: (d) => {
-    updateDiagnostics(diagnosticsEl, d, activeView?.state.doc);
-  },
 });
 
 const sharedExtensions = [basicSetup, oneDark, ...typstExtensions];
