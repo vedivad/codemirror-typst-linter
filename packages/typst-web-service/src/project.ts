@@ -187,13 +187,8 @@ export class TypstProject {
     );
   }
 
-  /** Build a tinymist URI from a project-relative path. */
-  toUri(path: string): string {
+  private toUri(path: string): string {
     const root = this.rootPath.replace(/^\//, "");
     return `untitled:${root}${normalizePath(path)}`;
-  }
-
-  destroy(): void {
-    // No-op for now; workers are owned by compiler/analyzer instances.
   }
 }

@@ -7,6 +7,15 @@ interface MarkdownSection {
   body: string;
 }
 
+// The helpers below reshape tinymist's hover markdown into something we can
+// render: tinymist emits an unfenced `let name(...)` signature as the first
+// line, uses `typ`/`typc` as code-fence languages, omits the `#` prefix on
+// `let`/`set`/`show`/`import`/`include`/`context` keywords inside those
+// fences, appends a trailing `[Open docs](url)` link, and uses `# Heading`
+// for collapsible sections. These shapes are specific to tinymist's output —
+// keep the workarounds together so they're easy to revisit when upstream
+// changes.
+
 function canonicalCodeLanguage(lang: string): string {
   const lower = lang.toLowerCase();
   if (lower === "typ" || lower === "typst" || lower === "typc") {

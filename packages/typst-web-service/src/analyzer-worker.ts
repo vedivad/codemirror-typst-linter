@@ -55,13 +55,7 @@ class AnalyzerWorker {
       }): void => {
         this.server!.on_response({ id, result: null });
       },
-      sendNotification: ({
-        method: _method,
-        params: _params,
-      }: {
-        method: string;
-        params: unknown;
-      }): void => {},
+      sendNotification: (): void => {},
       resolveFn: () => undefined,
     });
 

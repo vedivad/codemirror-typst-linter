@@ -64,14 +64,13 @@ export class TypstAnalyzer {
   }
 
   async didOpen(uri: string, content: string): Promise<void> {
-    await this.proxy.didOpen(uri, content);
     this.openedUris.add(uri);
+    await this.proxy.didOpen(uri, content);
   }
 
   async didClose(uri: string): Promise<void> {
-    if (!this.openedUris.has(uri)) return;
+    if (!this.openedUris.delete(uri)) return;
     await this.proxy.didClose(uri);
-    this.openedUris.delete(uri);
   }
 
   /**
@@ -99,11 +98,11 @@ export class TypstAnalyzer {
         changes.push({ uri, version: ++this.versionCounter, content });
       } else {
         opens.push({ uri, content });
+        this.openedUris.add(uri);
       }
     }
     if (opens.length === 0 && changes.length === 0) return;
     await this.proxy.didChangeMany(opens, changes);
-    for (const { uri } of opens) this.openedUris.add(uri);
   }
 
   /**
@@ -111,10 +110,12 @@ export class TypstAnalyzer {
    * in a single worker roundtrip.
    */
   async didCloseMany(uris: string[]): Promise<void> {
-    const toClose = uris.filter((uri) => this.openedUris.has(uri));
+    const toClose: string[] = [];
+    for (const uri of uris) {
+      if (this.openedUris.delete(uri)) toClose.push(uri);
+    }
     if (toClose.length === 0) return;
     await this.proxy.didCloseMany(toClose);
-    for (const uri of toClose) this.openedUris.delete(uri);
   }
 
   async completion(
