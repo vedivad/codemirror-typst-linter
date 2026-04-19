@@ -131,8 +131,8 @@ formatter: {
 
 ## Diagnostics modes
 
-- **Without `analyzer`**: diagnostics are pulled from `TypstCompiler` after each compile.
-- **With `analyzer`**: diagnostics are push-based from tinymist via the LSP protocol.
+- Diagnostics are always pulled from `TypstCompiler` after each compile.
+- `TypstAnalyzer` is used for editor intelligence only (autocompletion and hover).
 
 ## License
 

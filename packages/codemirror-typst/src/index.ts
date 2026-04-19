@@ -1,5 +1,5 @@
 import { autocompletion } from "@codemirror/autocomplete";
-import { type Diagnostic, linter, lintGutter } from "@codemirror/lint";
+import { type Diagnostic, lintGutter } from "@codemirror/lint";
 import type { Extension } from "@codemirror/state";
 import { ViewPlugin } from "@codemirror/view";
 import type { CompileResult, TypstProject } from "@vedivad/typst-web-service";
@@ -9,7 +9,6 @@ import type { TypstFormatterOptions } from "./formatter.js";
 import { createTypstFormatter } from "./formatter.js";
 import { createTypstHover } from "./hover.js";
 import { CompilerLintPlugin } from "./compiler-plugin.js";
-import { PushDiagnosticsPlugin } from "./push-diagnostics-plugin.js";
 import type { TypstShikiHighlighting, TypstShikiOptions } from "./shiki.js";
 import {
   createTypstShikiExtension,
@@ -106,28 +105,25 @@ export async function createTypstExtensions(
   const throttleDelay = options.throttleDelay;
   const extensions: Extension[] = [shiki.extension, lintGutter()];
 
+  const compilerPlugin = ViewPlugin.define(
+    (view) =>
+      new CompilerLintPlugin(
+        {
+          project,
+          debounceDelay: delay,
+          throttleDelay,
+          filePath,
+          onCompile,
+          onDiagnostics,
+        },
+        view,
+      ),
+    {},
+  );
+
+  extensions.push(compilerPlugin);
+
   if (project.hasAnalyzer) {
-    const pushPlugin = ViewPlugin.define(
-      (view) =>
-        new PushDiagnosticsPlugin(
-          {
-            project,
-            debounceDelay: delay,
-            throttleDelay,
-            filePath,
-            onCompile,
-            onDiagnostics,
-          },
-          view,
-        ),
-      {},
-    );
-
-    extensions.push(pushPlugin);
-
-    // Use lint infrastructure for rendering while diagnostics are push-based.
-    extensions.push(linter(null, { delay }));
-
     extensions.push(
       autocompletion({
         override: [typstCompletionSource({ project, filePath })],
@@ -141,24 +137,6 @@ export async function createTypstExtensions(
         highlightCode: shiki.highlightCode,
       }),
     );
-  } else {
-    const compilerPlugin = ViewPlugin.define(
-      (view) =>
-        new CompilerLintPlugin(
-          {
-            project,
-            debounceDelay: delay,
-            throttleDelay,
-            filePath,
-            onCompile,
-            onDiagnostics,
-          },
-          view,
-        ),
-      {},
-    );
-
-    extensions.push(compilerPlugin);
   }
 
   if (options.formatter) {

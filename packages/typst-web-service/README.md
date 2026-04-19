@@ -63,7 +63,7 @@ Config options ([typstyle docs](https://github.com/typstyle-rs/typstyle)):
 | `reorder_import_items`    | `boolean` | --      | Sort import items alphabetically    |
 | `wrap_text`               | `boolean` | --      | Wrap text to fit within `max_width` |
 
-## LSP analysis with tinymist
+## Completion and hover with tinymist
 
 `TypstAnalyzer` runs a [tinymist](https://github.com/Myriad-Dreamin/tinymist) language server in a Web Worker. The `wasmUrl` option must point to the `tinymist_bg.wasm` binary from the `tinymist-web` package.
 
@@ -72,10 +72,6 @@ import { TypstAnalyzer } from "@vedivad/typst-web-service";
 import tinymistWasmUrl from "tinymist-web/pkg/tinymist_bg.wasm?url";
 
 const analyzer = await TypstAnalyzer.create({ wasmUrl: tinymistWasmUrl });
-
-analyzer.onDiagnostics((uri, diagnostics) => {
-  console.log(uri, diagnostics);
-});
 
 await analyzer.didChange("untitled:project/main.typ", source);
 const completions = await analyzer.completion(
@@ -99,7 +95,7 @@ analyzer.destroy();
 | `TypstCompiler`  | Web Worker  | CDN (automatic)         | `compile()` -> diagnostics + vector, `compilePdf()` -> PDF |
 | `TypstRenderer`  | Main thread | CDN (automatic)         | `renderSvg(vector)` -> SVG string                          |
 | `TypstFormatter` | Main thread | Bundler (static import) | `format(source)`, `formatRange(source, start, end)`        |
-| `TypstAnalyzer`  | Web Worker  | User-provided `wasmUrl` | LSP diagnostics, completion, hover via tinymist            |
+| `TypstAnalyzer`  | Web Worker  | User-provided `wasmUrl` | Completion + hover via tinymist                            |
 
 ## License
 

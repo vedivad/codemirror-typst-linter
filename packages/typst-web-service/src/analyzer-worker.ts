@@ -1,20 +1,10 @@
 import * as Comlink from "comlink";
 import init, { TinymistLanguageServer } from "tinymist-web";
-import type { LspDiagnostic } from "./analyzer-types.js";
-
-type DiagnosticsCallback = (uri: string, diagnostics: LspDiagnostic[]) => void;
-
-function normalizeUri(uri: string): string {
-  return uri.startsWith("untitled:/")
-    ? `untitled:${uri.slice("untitled:/".length)}`
-    : uri;
-}
 
 class AnalyzerWorker {
   private server: TinymistLanguageServer | null = null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- events are opaque values from WASM
   private events: any[] = [];
-  private onDiagnostics?: DiagnosticsCallback;
 
   private flushEvents(): void {
     if (!this.server) return;
@@ -25,11 +15,7 @@ class AnalyzerWorker {
     }
   }
 
-  async init(
-    wasmUrl: string,
-    onDiagnostics: DiagnosticsCallback,
-  ): Promise<void> {
-    this.onDiagnostics = onDiagnostics;
+  async init(wasmUrl: string): Promise<void> {
     await init({ module_or_path: wasmUrl });
 
     this.server = new TinymistLanguageServer({
@@ -46,27 +32,18 @@ class AnalyzerWorker {
         this.server!.on_response({ id, result: null });
       },
       sendNotification: ({
-        method,
-        params,
+        method: _method,
+        params: _params,
       }: {
         method: string;
         params: unknown;
-      }): void => {
-        if (method === "textDocument/publishDiagnostics") {
-          const { uri, diagnostics } = params as {
-            uri: string;
-            diagnostics: LspDiagnostic[];
-          };
-          this.onDiagnostics?.(normalizeUri(uri), diagnostics);
-        }
-      },
+      }): void => {},
       resolveFn: () => undefined,
     });
 
     const initResult = this.server.on_request("initialize", {
       capabilities: {
         textDocument: {
-          publishDiagnostics: { relatedInformation: true },
           completion: { completionItem: { snippetSupport: true } },
           hover: { contentFormat: ["markdown", "plaintext"] },
         },

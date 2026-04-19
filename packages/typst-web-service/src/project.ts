@@ -1,15 +1,12 @@
 import type { TypstAnalyzer } from "./analyzer.js";
-import type { LspDiagnostic } from "./analyzer-types.js";
 import type { CompileResult, TypstCompiler } from "./compiler.js";
 import { normalizePath, normalizeRoot } from "./uri.js";
-
-export type DiagnosticsSubscriber = (diagnostics: LspDiagnostic[]) => void;
 
 export interface TypstProjectOptions {
   compiler: TypstCompiler;
   /**
    * Optional analyzer. When provided, text file operations also sync with the
-   * analyzer so diagnostics / completions / hover reflect the current state.
+   * analyzer so completions / hover reflect the current state.
    */
   analyzer?: TypstAnalyzer;
   /** Default entry file path. Default: "/main.typ". */
@@ -42,39 +39,15 @@ export class TypstProject {
   private readonly analyzer?: TypstAnalyzer;
   private readonly rootPath: string;
   private readonly trackedTextPaths = new Set<string>();
-  /**
-   * Last content sent to the analyzer, per path. Used to skip redundant
-   * `didChange` calls and to force re-publish via hover when content matches —
-   * tinymist won't re-publish on a no-op `didChange`, so cross-file edits
-   * (e.g. a dependency error invalidating the active file) need a nudge.
-   */
+  /** Last content sent to the analyzer, per path. Used to skip redundant `didChange` calls. */
   private readonly lastSyncedContent = new Map<string, string>();
   private _entry: string;
-
-  private readonly listenersByUri = new Map<
-    string,
-    Set<DiagnosticsSubscriber>
-  >();
-  /** Last push received per URI. Replayed on subscribe so tab-back shows correct diagnostics instantly. */
-  private readonly diagnosticsCache = new Map<string, LspDiagnostic[]>();
-  private readonly unsubscribeAnalyzer?: () => void;
 
   constructor(options: TypstProjectOptions) {
     this.compiler = options.compiler;
     this.analyzer = options.analyzer;
     this.rootPath = normalizeRoot(options.rootPath ?? DEFAULT_ROOT);
     this._entry = normalizePath(options.entry ?? DEFAULT_ENTRY);
-
-    if (this.analyzer) {
-      this.unsubscribeAnalyzer = this.analyzer.onDiagnostics(
-        (uri, diagnostics) => {
-          this.diagnosticsCache.set(uri, diagnostics);
-          const listeners = this.listenersByUri.get(uri);
-          if (!listeners) return;
-          for (const listener of listeners) listener(diagnostics);
-        },
-      );
-    }
   }
 
   /** Current entry file path. */
@@ -94,10 +67,7 @@ export class TypstProject {
 
   /**
    * Add or overwrite a text file. Goes to the compiler's VFS and, when an
-   * analyzer is attached, to the analyzer as a document change. When the
-   * content matches the last sync, the analyzer is nudged with a hover
-   * instead so it re-publishes diagnostics that may have shifted due to
-   * edits in other files.
+   * analyzer is attached, to the analyzer as a document change.
    */
   async setText(path: string, content: string): Promise<void> {
     const p = normalizePath(path);
@@ -111,17 +81,9 @@ export class TypstProject {
 
   private async syncToAnalyzer(path: string, content: string): Promise<void> {
     if (!this.analyzer) return;
-    const uri = this.toUri(path);
-    if (this.lastSyncedContent.get(path) === content) {
-      try {
-        await this.analyzer.hover(uri, 0, 0);
-      } catch {
-        /* best-effort — the hover result is unused */
-      }
-      return;
-    }
+    if (this.lastSyncedContent.get(path) === content) return;
     this.lastSyncedContent.set(path, content);
-    await this.analyzer.didChange(uri, content);
+    await this.analyzer.didChange(this.toUri(path), content);
   }
 
   /**
@@ -205,50 +167,6 @@ export class TypstProject {
     return this.compiler.compilePdf(undefined, this._entry);
   }
 
-  /**
-   * Subscribe to push-based analyzer diagnostics for a project-relative path.
-   * Returns an unsubscribe function. Replays the last cached diagnostics
-   * synchronously so tab-back reflects current state without waiting.
-   * Throws when no analyzer is attached.
-   */
-  onDiagnostics(path: string, listener: DiagnosticsSubscriber): () => void {
-    if (!this.analyzer) {
-      throw new Error("TypstProject: onDiagnostics requires an analyzer");
-    }
-    const uri = this.toUri(normalizePath(path));
-
-    let listeners = this.listenersByUri.get(uri);
-    if (!listeners) {
-      listeners = new Set();
-      this.listenersByUri.set(uri, listeners);
-    }
-    listeners.add(listener);
-
-    const cached = this.diagnosticsCache.get(uri);
-    if (cached) listener(cached);
-
-    return () => {
-      const current = this.listenersByUri.get(uri);
-      if (!current) return;
-      current.delete(listener);
-      if (current.size === 0) this.listenersByUri.delete(uri);
-    };
-  }
-
-  /**
-   * Force the analyzer to re-publish diagnostics for the given path. Useful
-   * after switching tabs to ensure the active file's diagnostics reflect
-   * recent edits to its dependencies.
-   */
-  async refreshDiagnostics(path: string): Promise<void> {
-    if (!this.analyzer) return;
-    try {
-      await this.analyzer.hover(this.toUri(normalizePath(path)), 0, 0);
-    } catch {
-      /* best-effort — the hover result is unused */
-    }
-  }
-
   /** Request completions at the given position. Throws when no analyzer is attached. */
   completion(path: string, line: number, character: number): Promise<unknown> {
     if (!this.analyzer) {
@@ -280,8 +198,6 @@ export class TypstProject {
   }
 
   destroy(): void {
-    this.unsubscribeAnalyzer?.();
-    this.listenersByUri.clear();
-    this.diagnosticsCache.clear();
+    // No-op for now; workers are owned by compiler/analyzer instances.
   }
 }
