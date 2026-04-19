@@ -1,11 +1,25 @@
-import { type Diagnostic, setDiagnostics } from "@codemirror/lint";
+import { setDiagnostics } from "@codemirror/lint";
 import type { EditorView, ViewUpdate } from "@codemirror/view";
-import type { TypstProject } from "@vedivad/typst-web-service";
+import type { CompileResult, TypstProject } from "@vedivad/typst-web-service";
 import { toCMDiagnostic } from "./diagnostics.js";
 import { type BasePluginOptions, PluginDriver } from "./plugin-driver.js";
 
 export interface CompilerLintPluginOptions extends BasePluginOptions {
   project: TypstProject;
+}
+
+function errorAsCompileResult(err: unknown, path: string): CompileResult {
+  return {
+    diagnostics: [
+      {
+        package: "",
+        path,
+        severity: "Error",
+        range: { startLine: 0, startCol: 0, endLine: 0, endCol: 1 },
+        message: err instanceof Error ? err.message : String(err),
+      },
+    ],
+  };
 }
 
 export class CompilerLintPlugin {
@@ -38,38 +52,24 @@ export class CompilerLintPlugin {
     await this.options.project.setText(path, source);
     if (signal.aborted) return;
 
+    let result: CompileResult;
     try {
-      const result = await this.options.project.compile();
-      if (signal.aborted) return;
-
-      this.options.onCompile?.(result);
-      const diagnostics = result.diagnostics
-        .filter((d) => d.path === path)
-        .map((d) => toCMDiagnostic(view.state, d));
-
-      try {
-        view.dispatch(setDiagnostics(view.state, diagnostics));
-      } catch {
-        // View may already be replaced/destroyed.
-      }
+      result = await this.options.project.compile();
     } catch (err) {
       if (signal.aborted) return;
+      result = errorAsCompileResult(err, path);
+    }
+    if (signal.aborted) return;
 
-      const diagnostics: Diagnostic[] = [
-        {
-          from: 0,
-          to: Math.min(1, view.state.doc.length),
-          severity: "error",
-          message: err instanceof Error ? err.message : String(err),
-          source: "typst",
-        },
-      ];
+    this.options.onCompile?.(result);
+    const diagnostics = result.diagnostics
+      .filter((d) => d.path === path)
+      .map((d) => toCMDiagnostic(view.state, d));
 
-      try {
-        view.dispatch(setDiagnostics(view.state, diagnostics));
-      } catch {
-        // View may already be replaced/destroyed.
-      }
+    try {
+      view.dispatch(setDiagnostics(view.state, diagnostics));
+    } catch {
+      // View may already be replaced/destroyed.
     }
   }
 }

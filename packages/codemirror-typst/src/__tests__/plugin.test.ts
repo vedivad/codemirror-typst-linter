@@ -57,7 +57,7 @@ describe("CompilerLintPlugin", () => {
     );
   });
 
-  it("dispatches an error diagnostic when compile throws", async () => {
+  it("surfaces thrown compile errors via onCompile", async () => {
     const project = {
       hasAnalyzer: false,
       setText: vi.fn().mockResolvedValue(undefined),
@@ -65,10 +65,19 @@ describe("CompilerLintPlugin", () => {
     } as any;
     const onCompile = vi.fn();
     const view = mockView("x");
-    new CompilerLintPlugin({ project, onCompile }, view);
+    new CompilerLintPlugin(
+      { project, onCompile, filePath: () => "/main.typ" },
+      view,
+    );
 
-    await waitFor(() => view.dispatch.mock.calls.length > 0);
-    expect(onCompile).not.toHaveBeenCalled();
+    await waitFor(() => onCompile.mock.calls.length > 0);
+    const result = onCompile.mock.calls[0][0];
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0]).toMatchObject({
+      path: "/main.typ",
+      severity: "Error",
+      message: "boom",
+    });
   });
 
   it("pushes the editor's content to the project before compiling", async () => {
