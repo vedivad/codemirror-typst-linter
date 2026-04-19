@@ -24,12 +24,14 @@ import { EditorState } from "@codemirror/state";
 import {
   createTypstExtensions,
   TypstCompiler,
+  TypstProject,
 } from "@vedivad/codemirror-typst";
 
 const compiler = await TypstCompiler.create();
+const project = new TypstProject({ compiler });
 
 const typstExtensions = await createTypstExtensions({
-  compiler: { instance: compiler },
+  project,
   highlighting: { theme: "dark" },
 });
 
@@ -51,6 +53,7 @@ import {
   TypstRenderer,
   TypstFormatter,
   TypstAnalyzer,
+  TypstProject,
 } from "@vedivad/codemirror-typst";
 import tinymistWasmUrl from "tinymist-web/pkg/tinymist_bg.wasm?url";
 
@@ -61,19 +64,18 @@ const [compiler, renderer, formatter, analyzer] = await Promise.all([
   TypstAnalyzer.create({ wasmUrl: tinymistWasmUrl }),
 ]);
 
+const project = new TypstProject({ compiler, analyzer });
+
 const typstExtensions = await createTypstExtensions({
-  compiler: {
-    instance: compiler,
-    onCompile: async (result) => {
-      if (result.vector) {
-        const svg = await renderer.renderSvg(result.vector);
-        document.querySelector("#preview")!.innerHTML = svg;
-      }
-    },
-    debounceDelay: 300,
-    throttleDelay: 2000,
+  project,
+  onCompile: async (result) => {
+    if (result.vector) {
+      const svg = await renderer.renderSvg(result.vector);
+      document.querySelector("#preview")!.innerHTML = svg;
+    }
   },
-  analyzer: { instance: analyzer },
+  debounceDelay: 300,
+  throttleDelay: 2000,
   formatter: { instance: formatter, formatOnSave: true },
   highlighting: { theme: "dark" },
 });
@@ -81,7 +83,7 @@ const typstExtensions = await createTypstExtensions({
 
 ## Multi-file editor
 
-Pass a `filePath` getter and `getFiles` for multi-file projects. Share the same `TypstAnalyzer` instance across tabs — the session is managed internally:
+Pass a `filePath` getter for multi-file projects and keep one shared `TypstProject`:
 
 ```ts
 let activeFile = "/main.typ";
@@ -90,22 +92,20 @@ const files: Record<string, string> = {
   "/template.typ": "...",
 };
 
+const project = new TypstProject({ compiler, analyzer });
+await project.setMany(files);
+
 const extensions = await createTypstExtensions({
+  project,
   filePath: () => activeFile,
-  getFiles: () => files,
-  compiler: { instance: compiler },
-  analyzer: { instance: analyzer },
 });
 ```
 
 ## Compile timing
 
 ```ts
-compiler: {
-  instance: compiler,
-  debounceDelay: 300,  // wait 300ms after typing stops
-  throttleDelay: 2000, // force a compile at least every 2s during continuous typing
-}
+debounceDelay: 300,  // wait 300ms after typing stops
+throttleDelay: 2000, // force a compile at least every 2s during continuous typing
 ```
 
 ## LSP analysis

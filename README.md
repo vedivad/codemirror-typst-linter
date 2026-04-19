@@ -24,12 +24,14 @@ import { EditorState } from "@codemirror/state";
 import {
   createTypstExtensions,
   TypstCompiler,
+  TypstProject,
 } from "@vedivad/codemirror-typst";
 
 const compiler = await TypstCompiler.create();
+const project = new TypstProject({ compiler });
 
 const typstExtensions = await createTypstExtensions({
-  compiler: { instance: compiler },
+  project,
   highlighting: { theme: "dark" },
 });
 
@@ -46,7 +48,7 @@ This gives you syntax highlighting, diagnostics, and compilation out of the box 
 
 ### Full-featured editor
 
-Add formatting, LSP analysis (autocompletion, hover, push diagnostics), and live SVG preview:
+Add formatting, completion/hover analysis, and live SVG preview:
 
 ```ts
 import {
@@ -55,6 +57,7 @@ import {
   TypstRenderer,
   TypstFormatter,
   TypstAnalyzer,
+  TypstProject,
 } from "@vedivad/codemirror-typst";
 import tinymistWasmUrl from "tinymist-web/pkg/tinymist_bg.wasm?url"; // Vite
 
@@ -65,19 +68,18 @@ const [compiler, renderer, formatter, analyzer] = await Promise.all([
   TypstAnalyzer.create({ wasmUrl: tinymistWasmUrl }),
 ]);
 
+const project = new TypstProject({ compiler, analyzer });
+
 const typstExtensions = await createTypstExtensions({
-  compiler: {
-    instance: compiler,
-    onCompile: async (result) => {
-      if (result.vector) {
-        const svg = await renderer.renderSvg(result.vector);
-        document.querySelector("#preview")!.innerHTML = svg;
-      }
-    },
-    debounceDelay: 300,
-    throttleDelay: 2000,
+  project,
+  onCompile: async (result) => {
+    if (result.vector) {
+      const svg = await renderer.renderSvg(result.vector);
+      document.querySelector("#preview")!.innerHTML = svg;
+    }
   },
-  analyzer: { instance: analyzer },
+  debounceDelay: 300,
+  throttleDelay: 2000,
   formatter: { instance: formatter, formatOnSave: true },
   highlighting: { theme: "dark" },
 });
@@ -85,13 +87,14 @@ const typstExtensions = await createTypstExtensions({
 
 ### Multi-file editor
 
-For multi-file projects, each editor declares its `filePath` and provides a `getFiles` getter. The session is managed internally per analyzer instance — just pass the same `TypstAnalyzer` to share state across tabs:
+For multi-file projects, create one shared `TypstProject`, push files into it, and switch `filePath` across tabs:
 
 ```ts
 import {
   createTypstExtensions,
   TypstAnalyzer,
   TypstCompiler,
+  TypstProject,
 } from "@vedivad/codemirror-typst";
 import tinymistWasmUrl from "tinymist-web/pkg/tinymist_bg.wasm?url";
 
@@ -106,12 +109,12 @@ const files: Record<string, string> = {
 };
 
 let activeFile = "/main.typ";
+const project = new TypstProject({ compiler, analyzer });
+await project.setMany(files);
 
 const extensions = await createTypstExtensions({
+  project,
   filePath: () => activeFile,
-  getFiles: () => files,
-  compiler: { instance: compiler },
-  analyzer: { instance: analyzer },
   highlighting: { theme: "dark" },
 });
 ```
@@ -132,7 +135,7 @@ Four independent classes, each created via async `create()` factory methods:
 | `TypstCompiler`  | Web Worker  | CDN (automatic)         | `compile()` → diagnostics + vector, `compilePdf()` → PDF |
 | `TypstRenderer`  | Main thread | CDN (automatic)         | `renderSvg(vector)` → SVG string                         |
 | `TypstFormatter` | Main thread | Bundler (static import) | `format(source)`, `formatRange(source, start, end)`      |
-| `TypstAnalyzer`  | Web Worker  | User-provided `wasmUrl` | LSP diagnostics, completion, hover via tinymist          |
+| `TypstAnalyzer`  | Web Worker  | User-provided `wasmUrl` | Completion and hover via tinymist                        |
 
 Each class is independent — import only what you need.
 
@@ -202,10 +205,6 @@ import tinymistWasmUrl from "tinymist-web/pkg/tinymist_bg.wasm?url";
 
 const analyzer = await TypstAnalyzer.create({ wasmUrl: tinymistWasmUrl });
 
-analyzer.onDiagnostics((uri, diagnostics) => {
-  console.log(uri, diagnostics);
-});
-
 await analyzer.didChange("untitled:project/main.typ", source);
 const completions = await analyzer.completion(
   "untitled:project/main.typ",
@@ -241,11 +240,8 @@ formatter: {
 Control when compilation fires after document changes with `delay` (debounce) and `throttleDelay` (throttle):
 
 ```ts
-compiler: {
-  instance: compiler,
-  debounceDelay: 300,  // wait 300ms after typing stops
-  throttleDelay: 2000, // but force a compile at least every 2s during continuous typing
-}
+debounceDelay: 300,  // wait 300ms after typing stops
+throttleDelay: 2000, // but force a compile at least every 2s during continuous typing
 ```
 
 | Option          | Default  | Behavior                                                                                                                                        |
@@ -253,12 +249,12 @@ compiler: {
 | `debounceDelay` | `0`      | Debounce — resets on every keystroke, fires once typing pauses. `0` means compile immediately on each change.                                   |
 | `throttleDelay` | disabled | Throttle — forces a compile when typing continues past this window, even if the debounce hasn't fired. Only effective when `debounceDelay` > 0. |
 
-Both options apply to either diagnostics mode (compiler-only or analyzer).
+Both options control compile frequency for diagnostics and preview updates.
 
 ### Diagnostics modes
 
-- **Without `analyzer`**: diagnostics are pulled from `TypstCompiler` after each compile.
-- **With `analyzer`**: diagnostics are push-only from tinymist. The linter extension renders markers but doesn't source diagnostics.
+- Diagnostics are always pulled from `TypstCompiler` after each compile.
+- `TypstAnalyzer` is used for completion and hover only.
 
 ## Architecture
 
@@ -268,7 +264,6 @@ graph TD
     Shiki[Shiki highlighting]
     Linter[Linter rendering]
     Pull[CompilerLintPlugin]
-    Push[PushDiagnosticsPlugin]
     FmtExt[Formatter keybinding]
   end
 
@@ -277,14 +272,11 @@ graph TD
     Analyzer["TypstAnalyzer\n(Web Worker)"]
     Renderer["TypstRenderer\n(main thread)"]
     Formatter["TypstFormatter\n(main thread)"]
-    Session["AnalyzerSession"]
   end
 
   Pull --> Compiler
-  Push --> Session
-  Push --> Compiler
-  Push --> Linter
-  Session --> Analyzer
+  Pull --> Linter
+  Analyzer --> Pull
   FmtExt --> Formatter
 
   Compiler --> TypstWASM["typst WASM\n(compiler)"]
@@ -294,11 +286,10 @@ graph TD
 ```
 
 - **`TypstCompiler`** — Web Worker running the Typst WASM compiler. Handles compilation, PDF rendering, and request coalescing.
-- **`TypstAnalyzer`** — Web Worker running tinymist for LSP diagnostics, completion, and hover. Optional.
-- **`AnalyzerSession`** — Synchronizes multi-file project state with the analyzer. Handles file ordering, diagnostic subscriptions with caching, and request queueing. Managed internally per analyzer instance.
+- **`TypstAnalyzer`** — Web Worker running tinymist for completion and hover. Optional.
 - **`TypstRenderer`** — Converts compile vector artifacts to SVG. Main thread, lazy WASM loading.
 - **`TypstFormatter`** — Standalone formatter powered by typstyle WASM. Main thread.
-- **`codemirror-typst`** — CodeMirror 6 extensions consuming the service classes. Single diagnostics owner per mode.
+- **`codemirror-typst`** — CodeMirror 6 extensions consuming the service classes. Compiler is the single diagnostics source.
 
 ## Development
 
@@ -324,7 +315,7 @@ graph TD
 just dev
 ```
 
-The demo at `demo/` includes a tabbed multi-file editor, live SVG preview, tinymist LSP diagnostics, diagnostics panel, PDF export, code formatting (Shift+Alt+F), and format on save (Ctrl+S).
+The demo at `demo/` includes a tabbed multi-file editor, live SVG preview, compile diagnostics panel, tinymist completion/hover, PDF export, code formatting (Shift+Alt+F), and format on save (Ctrl+S).
 
 ## License
 
