@@ -6,6 +6,30 @@ class AnalyzerWorker {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- events are opaque values from WASM
   private events: any[] = [];
 
+  private ensureServer(): TinymistLanguageServer {
+    if (!this.server) throw new Error("Analyzer not initialized");
+    return this.server;
+  }
+
+  private notifyDidOpen(uri: string, content: string): void {
+    this.ensureServer().on_notification("textDocument/didOpen", {
+      textDocument: { uri, languageId: "typst", version: 1, text: content },
+    });
+  }
+
+  private notifyDidClose(uri: string): void {
+    this.ensureServer().on_notification("textDocument/didClose", {
+      textDocument: { uri },
+    });
+  }
+
+  private notifyDidChange(uri: string, version: number, content: string): void {
+    this.ensureServer().on_notification("textDocument/didChange", {
+      textDocument: { uri, version },
+      contentChanges: [{ text: content }],
+    });
+  }
+
   private flushEvents(): void {
     if (!this.server) return;
     while (this.events.length > 0) {
@@ -61,18 +85,12 @@ class AnalyzerWorker {
   }
 
   async didOpen(uri: string, content: string): Promise<void> {
-    if (!this.server) throw new Error("Analyzer not initialized");
-    this.server.on_notification("textDocument/didOpen", {
-      textDocument: { uri, languageId: "typst", version: 1, text: content },
-    });
+    this.notifyDidOpen(uri, content);
     this.flushEvents();
   }
 
   async didClose(uri: string): Promise<void> {
-    if (!this.server) throw new Error("Analyzer not initialized");
-    this.server.on_notification("textDocument/didClose", {
-      textDocument: { uri },
-    });
+    this.notifyDidClose(uri);
     this.flushEvents();
   }
 
@@ -81,11 +99,7 @@ class AnalyzerWorker {
     version: number,
     content: string,
   ): Promise<void> {
-    if (!this.server) throw new Error("Analyzer not initialized");
-    this.server.on_notification("textDocument/didChange", {
-      textDocument: { uri, version },
-      contentChanges: [{ text: content }],
-    });
+    this.notifyDidChange(uri, version, content);
     this.flushEvents();
   }
 
@@ -93,27 +107,20 @@ class AnalyzerWorker {
     opens: Array<{ uri: string; content: string }>,
     changes: Array<{ uri: string; version: number; content: string }>,
   ): Promise<void> {
-    if (!this.server) throw new Error("Analyzer not initialized");
+    this.ensureServer();
     for (const { uri, content } of opens) {
-      this.server.on_notification("textDocument/didOpen", {
-        textDocument: { uri, languageId: "typst", version: 1, text: content },
-      });
+      this.notifyDidOpen(uri, content);
     }
     for (const { uri, version, content } of changes) {
-      this.server.on_notification("textDocument/didChange", {
-        textDocument: { uri, version },
-        contentChanges: [{ text: content }],
-      });
+      this.notifyDidChange(uri, version, content);
     }
     this.flushEvents();
   }
 
   async didCloseMany(uris: string[]): Promise<void> {
-    if (!this.server) throw new Error("Analyzer not initialized");
+    this.ensureServer();
     for (const uri of uris) {
-      this.server.on_notification("textDocument/didClose", {
-        textDocument: { uri },
-      });
+      this.notifyDidClose(uri);
     }
     this.flushEvents();
   }
@@ -123,8 +130,7 @@ class AnalyzerWorker {
     line: number,
     character: number,
   ): Promise<unknown> {
-    if (!this.server) throw new Error("Analyzer not initialized");
-    const result = this.server.on_request("textDocument/completion", {
+    const result = this.ensureServer().on_request("textDocument/completion", {
       textDocument: { uri },
       position: { line, character },
     });
@@ -137,8 +143,7 @@ class AnalyzerWorker {
   }
 
   async hover(uri: string, line: number, character: number): Promise<unknown> {
-    if (!this.server) throw new Error("Analyzer not initialized");
-    const result = this.server.on_request("textDocument/hover", {
+    const result = this.ensureServer().on_request("textDocument/hover", {
       textDocument: { uri },
       position: { line, character },
     });
