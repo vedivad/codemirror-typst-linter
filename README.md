@@ -12,7 +12,7 @@ npm install @vedivad/codemirror-typst
 
 ### Prerequisites
 
-- A bundler with WASM support (e.g. [Vite](https://vite.dev) + [`vite-plugin-wasm`](https://github.com/nicolo-ribaudo/vite-plugin-wasm), or webpack with [`wasm-pack-plugin`](https://github.com/nicolo-ribaudo/vite-plugin-wasm))
+- A bundler with WASM support (e.g. [Vite](https://vite.dev) + [`vite-plugin-wasm`](https://github.com/nicolo-ribaudo/vite-plugin-wasm), or webpack with `wasm-pack-plugin`)
 - The formatter (`TypstFormatter`) requires the bundler to handle static WASM imports from `@typstyle/typstyle-wasm-bundler`
 - The analyzer (`TypstAnalyzer`) requires a URL to the tinymist WASM binary (see [LSP analysis](#lsp-analysis-with-tinymist))
 
@@ -255,41 +255,6 @@ Both options control compile frequency for diagnostics and preview updates.
 
 - Diagnostics are always pulled from `TypstCompiler` after each compile.
 - `TypstAnalyzer` is used for completion and hover only.
-
-## Architecture
-
-```mermaid
-graph TD
-  subgraph "codemirror-typst"
-    Shiki[Shiki highlighting]
-    Linter[Linter rendering]
-    Pull[CompilerLintPlugin]
-    FmtExt[Formatter keybinding]
-  end
-
-  subgraph "typst-web-service"
-    Compiler["TypstCompiler\n(Web Worker)"]
-    Analyzer["TypstAnalyzer\n(Web Worker)"]
-    Renderer["TypstRenderer\n(main thread)"]
-    Formatter["TypstFormatter\n(main thread)"]
-  end
-
-  Pull --> Compiler
-  Pull --> Linter
-  Analyzer --> Pull
-  FmtExt --> Formatter
-
-  Compiler --> TypstWASM["typst WASM\n(compiler)"]
-  Analyzer --> TinymistWASM["tinymist WASM\n(LSP)"]
-  Renderer --> RendererWASM["typst-ts-renderer WASM"]
-  Formatter --> TypstyleWASM["typstyle WASM"]
-```
-
-- **`TypstCompiler`** — Web Worker running the Typst WASM compiler. Handles compilation, PDF rendering, and request coalescing.
-- **`TypstAnalyzer`** — Web Worker running tinymist for completion and hover. Optional.
-- **`TypstRenderer`** — Converts compile vector artifacts to SVG. Main thread, lazy WASM loading.
-- **`TypstFormatter`** — Standalone formatter powered by typstyle WASM. Main thread.
-- **`codemirror-typst`** — CodeMirror 6 extensions consuming the service classes. Compiler is the single diagnostics source.
 
 ## Development
 

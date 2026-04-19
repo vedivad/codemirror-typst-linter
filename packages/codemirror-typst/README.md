@@ -155,9 +155,6 @@ Useful selectors:
 
 You can also control header element order with CSS (for example via `order` on `.cm-typst-hover-summary`, `.cm-typst-hover-signature`, and `.cm-typst-hover-header-actions`).
 
-```
-
 ## License
 
 MIT
-```
