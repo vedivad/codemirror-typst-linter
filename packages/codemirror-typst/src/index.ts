@@ -14,9 +14,15 @@ import {
   createTypstShikiExtension,
   createTypstShikiHighlighting,
 } from "./shiki.js";
+import {
+  diagnosticLocation,
+  groupDiagnosticsByFile,
+} from "./diagnostics-utils.js";
 
 export type {
   CompileResult,
+  DiagnosticMessage,
+  DiagnosticRange,
   FormatConfig,
   TypstCompilerOptions,
   TypstProjectOptions,
@@ -34,9 +40,11 @@ export type {
   TypstShikiOptions,
 };
 export {
+  diagnosticLocation,
   createTypstFormatter,
   createTypstShikiExtension,
   createTypstShikiHighlighting,
+  groupDiagnosticsByFile,
   toCMDiagnostic,
 };
 

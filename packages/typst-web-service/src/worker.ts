@@ -11,6 +11,7 @@ import {
   withAccessModel,
   withPackageRegistry,
 } from "@myriaddreamin/typst.ts/options.init";
+import { sortDiagnosticsByFileAndRange } from "./diagnostics-sort.js";
 import type { DiagnosticMessage } from "./types.js";
 
 const MAIN_FILE = "/main.typ";
@@ -58,8 +59,8 @@ class CompilerWorker {
       mainFilePath: entry ?? MAIN_FILE,
       diagnostics: "full",
     });
-    const diagnostics: DiagnosticMessage[] = (result.diagnostics ?? []).flatMap(
-      (d) => {
+    const diagnostics = sortDiagnosticsByFileAndRange(
+      (result.diagnostics ?? []).flatMap((d) => {
         const m = d.range.match(/(\d+):(\d+)-(\d+):(\d+)/);
         if (!m) {
           console.warn(
@@ -79,7 +80,7 @@ class CompilerWorker {
             },
           },
         ];
-      },
+      }),
     );
     const vector = result.result ?? undefined;
     if (vector) {

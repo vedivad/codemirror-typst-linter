@@ -22,19 +22,12 @@ export function updateDiagnostics(
     el.innerHTML = `<h2>Diagnostics</h2><p class="empty">No issues found.</p>`;
     return;
   }
-  const items = [...diagnostics]
-    .sort((a, b) => {
-      if (a.path !== b.path) return a.path.localeCompare(b.path);
-      if (a.range.startLine !== b.range.startLine) {
-        return a.range.startLine - b.range.startLine;
-      }
-      return a.range.startCol - b.range.startCol;
-    })
+  const items = diagnostics
     .map((d) => {
-      const line = d.range.startLine + 1;
-      const col = d.range.startCol + 1;
       const path = escapeHtml(formatPath(d.path));
       const severityClass = d.severity.toLowerCase();
+      const line = d.range.startLine + 1;
+      const col = d.range.startCol + 1;
       return `<li class="diagnostic ${severityClass}"><span class="icon">${SEVERITY_ICONS[d.severity] ?? "\u2139"}</span><span class="loc">${path}:${line}:${col}</span><span class="message">${escapeHtml(d.message)}</span></li>`;
     })
     .join("");

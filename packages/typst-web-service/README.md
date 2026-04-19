@@ -27,6 +27,9 @@ if (result.vector) {
   document.querySelector("#preview")!.innerHTML = svg;
 }
 
+// result.diagnostics are returned in deterministic order
+// (path, start position, end position, message)
+
 // Multi-file
 const result = await compiler.compile({
   "/main.typ": '#import "template.typ": greet\n#greet("World")',
