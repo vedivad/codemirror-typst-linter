@@ -1,5 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { renderHoverMarkdown } from "../hover-markdown.js";
+import { parseHoverDoc, renderHoverMarkdown } from "../hover-markdown.js";
+
+describe("parseHoverDoc", () => {
+  it("extracts structured signature and open docs url", () => {
+    const doc = parseHoverDoc(
+      "```typc\nlet align(alignment: alignment, body: content);\n```\n\nAligns content.\n\n[Open docs](https://typst.app/docs/reference/layout/align/)",
+    );
+
+    expect(doc.signature?.language).toBe("typst");
+    expect(doc.signature?.code).toContain("#let align");
+    expect(doc.openDocsUrl).toBe(
+      "https://typst.app/docs/reference/layout/align/",
+    );
+  });
+});
 
 describe("renderHoverMarkdown", () => {
   it("renders markdown links as anchors", () => {

@@ -2,9 +2,16 @@ import MarkdownIt from "markdown-it";
 
 export type CodeHighlighter = (code: string, language: string) => string;
 
-interface MarkdownSection {
+export interface HoverSection {
   title: string;
-  body: string;
+  bodyHtml: string;
+}
+
+export interface HoverDoc {
+  signature?: { code: string; language: string };
+  summaryHtml?: string;
+  openDocsUrl?: string;
+  sections: HoverSection[];
 }
 
 // The helpers below reshape tinymist's hover markdown into something we can
@@ -31,7 +38,7 @@ function normalizeTypstCode(code: string): string {
   );
 }
 
-function fenceLeadingTypstSignature(md: string): string {
+function ensureSignatureFence(md: string): string {
   const lines = md.split("\n");
   const first = lines[0]?.trimStart() ?? "";
   if (!/^let\s+[a-zA-Z_]\w*\s*\(/.test(first)) {
@@ -62,71 +69,8 @@ function extractOpenDocs(md: string): { markdown: string; href?: string } {
   };
 }
 
-function extractLeadingFence(md: string): {
-  signatureMd?: string;
-  restMd: string;
-} {
-  const match = md.match(/^```[^\n]*\n[\s\S]*?\n```\s*/);
-  if (!match) return { restMd: md };
-  return {
-    signatureMd: match[0].trim(),
-    restMd: md.slice(match[0].length),
-  };
-}
-
-function splitTopLevelSections(md: string): {
-  summary: string;
-  sections: MarkdownSection[];
-} {
-  const lines = md.split("\n");
-  const firstHeading = lines.findIndex((line) => /^#\s+/.test(line));
-
-  if (firstHeading < 0) {
-    return {
-      summary: md.trim(),
-      sections: [],
-    };
-  }
-
-  const summary = lines.slice(0, firstHeading).join("\n").trim();
-  const sections: MarkdownSection[] = [];
-
-  let i = firstHeading;
-  while (i < lines.length) {
-    const heading = lines[i].match(/^#\s+(.+)$/);
-    if (!heading) {
-      i++;
-      continue;
-    }
-
-    const title = heading[1].trim();
-    i++;
-    const bodyLines: string[] = [];
-
-    while (i < lines.length && !/^#\s+/.test(lines[i])) {
-      bodyLines.push(lines[i]);
-      i++;
-    }
-
-    sections.push({ title, body: bodyLines.join("\n").trim() });
-  }
-
-  return { summary, sections };
-}
-
-/**
- * Render markdown for hover tooltips using markdown-it.
- *
- * Security: raw HTML is disabled (`html: false`) so input docs cannot inject
- * arbitrary markup into the tooltip.
- */
-export function renderHoverMarkdown(
-  md: string,
-  highlightCode?: CodeHighlighter,
-): string {
-  const normalizedMd = fenceLeadingTypstSignature(md).trim();
-
-  const mdParser = new MarkdownIt({
+function createParser(highlightCode?: CodeHighlighter): MarkdownIt {
+  const mdParser: MarkdownIt = new MarkdownIt({
     html: false,
     linkify: true,
     highlight(code, lang) {
@@ -147,7 +91,7 @@ export function renderHoverMarkdown(
 
   const defaultLinkOpen =
     mdParser.renderer.rules.link_open ??
-    ((tokens, idx, options, env, self) =>
+    ((tokens, idx, options, _env, self) =>
       self.renderToken(tokens, idx, options));
 
   mdParser.renderer.rules.link_open = (tokens, idx, options, env, self) => {
@@ -156,35 +100,142 @@ export function renderHoverMarkdown(
     return defaultLinkOpen(tokens, idx, options, env, self);
   };
 
-  const { markdown: withoutOpenDocs, href: openDocsHref } =
-    extractOpenDocs(normalizedMd);
-  const { signatureMd, restMd } = extractLeadingFence(withoutOpenDocs);
-  const cleanedRest = restMd.replace(/^\s*---+\s*\n?/, "").trim();
-  const { summary, sections } = splitTopLevelSections(cleanedRest);
+  return mdParser;
+}
 
-  const signatureHtml = signatureMd
-    ? `<div class="cm-typst-hover-signature">${mdParser.render(signatureMd)}</div>`
+function parseHoverDocWithParser(
+  mdParser: MarkdownIt,
+  source: string,
+): HoverDoc {
+  const { markdown: withoutOpenDocs, href: openDocsUrl } =
+    extractOpenDocs(source);
+  const normalized = ensureSignatureFence(withoutOpenDocs).trim();
+
+  const env = {};
+  const tokens = mdParser.parse(normalized, env);
+  const render = (subset: typeof tokens) =>
+    mdParser.renderer.render(subset, mdParser.options, env);
+
+  let i = 0;
+
+  let signature: HoverDoc["signature"];
+  if (tokens[0]?.type === "fence") {
+    const language = canonicalCodeLanguage((tokens[0].info ?? "").trim());
+    const code =
+      language === "typst"
+        ? normalizeTypstCode(tokens[0].content)
+        : tokens[0].content;
+    signature = { code, language };
+    i = 1;
+  }
+
+  if (tokens[i]?.type === "hr") {
+    i++;
+  }
+
+  const summaryTokens: typeof tokens = [];
+  while (i < tokens.length) {
+    const token = tokens[i];
+    if (token.type === "heading_open" && token.tag === "h1") break;
+    summaryTokens.push(token);
+    i++;
+  }
+  const summaryHtml = summaryTokens.length
+    ? render(summaryTokens).trim()
+    : undefined;
+
+  const sections: HoverSection[] = [];
+  while (i < tokens.length) {
+    const open = tokens[i];
+    if (open.type !== "heading_open" || open.tag !== "h1") {
+      i++;
+      continue;
+    }
+    const title = tokens[i + 1]?.content?.trim() ?? "";
+    i += 3;
+    const bodyTokens: typeof tokens = [];
+    while (i < tokens.length) {
+      const t = tokens[i];
+      if (t.type === "heading_open" && t.tag === "h1") break;
+      bodyTokens.push(t);
+      i++;
+    }
+    sections.push({
+      title,
+      bodyHtml: bodyTokens.length ? render(bodyTokens) : "",
+    });
+  }
+
+  return { signature, summaryHtml, openDocsUrl, sections };
+}
+
+export function parseHoverDoc(source: string): HoverDoc {
+  const mdParser = createParser();
+  return parseHoverDocWithParser(mdParser, source);
+}
+
+function renderSignature(
+  mdParser: MarkdownIt,
+  signature: HoverDoc["signature"],
+  highlightCode?: CodeHighlighter,
+): string {
+  if (!signature) return "";
+
+  const { code, language } = signature;
+  if (highlightCode && language) {
+    return `<div class="cm-typst-hover-code">${highlightCode(code, language)}</div>`;
+  }
+
+  const escapedCode = mdParser.utils.escapeHtml(code);
+  const escapedLang = language
+    ? ` class="language-${mdParser.utils.escapeHtml(language)}"`
     : "";
-  const summaryHtml = summary
-    ? `<div class="cm-typst-hover-summary">${mdParser.render(summary)}</div>`
+  return `<pre class="cm-typst-hover-pre"><code${escapedLang}>${escapedCode}</code></pre>`;
+}
+
+function renderHoverDoc(
+  mdParser: MarkdownIt,
+  doc: HoverDoc,
+  highlightCode?: CodeHighlighter,
+): string {
+  const { signature, summaryHtml, openDocsUrl, sections } = doc;
+
+  const signatureBlock = signature
+    ? `<div class="cm-typst-hover-signature">${renderSignature(mdParser, signature, highlightCode)}</div>`
     : "";
-  const openDocsHtml = openDocsHref
-    ? `<a class="cm-typst-hover-open-docs" href="${mdParser.utils.escapeHtml(openDocsHref)}" target="_blank" rel="noopener noreferrer">Open docs</a>`
+  const summaryBlock = summaryHtml
+    ? `<div class="cm-typst-hover-summary">${summaryHtml}</div>`
+    : "";
+  const openDocsBlock = openDocsUrl
+    ? `<a class="cm-typst-hover-open-docs" href="${mdParser.utils.escapeHtml(openDocsUrl)}" target="_blank" rel="noopener noreferrer">Open docs</a>`
     : "";
 
   const sectionHtml = sections
     .map((section, index) => {
       const escapedTitle = mdParser.utils.escapeHtml(section.title);
-      const bodyHtml = section.body ? mdParser.render(section.body) : "";
-      return `<details class="cm-typst-hover-section"${index === 0 ? " open" : ""}><summary>${escapedTitle}</summary>${bodyHtml}</details>`;
+      return `<details class="cm-typst-hover-section"${index === 0 ? " open" : ""}><summary>${escapedTitle}</summary>${section.bodyHtml}</details>`;
     })
     .join("");
 
-  const hasHeader = Boolean(signatureHtml || summaryHtml || openDocsHtml);
-  const fallbackBody = hasHeader ? "" : mdParser.render(withoutOpenDocs);
+  const hasHeader = Boolean(signatureBlock || summaryBlock || openDocsBlock);
   const headerHtml = hasHeader
-    ? `<div class="cm-typst-hover-header"><div class="cm-typst-hover-header-main">${signatureHtml}${summaryHtml}</div>${openDocsHtml ? `<div class="cm-typst-hover-header-actions">${openDocsHtml}</div>` : ""}</div>`
+    ? `<div class="cm-typst-hover-header"><div class="cm-typst-hover-header-main">${signatureBlock}${summaryBlock}</div>${openDocsBlock ? `<div class="cm-typst-hover-header-actions">${openDocsBlock}</div>` : ""}</div>`
     : "";
 
-  return `<div class="cm-typst-hover-content">${headerHtml}${sectionHtml}${fallbackBody}</div>`;
+  return `<div class="cm-typst-hover-content">${headerHtml}${sectionHtml}</div>`;
+}
+
+/**
+ * Render markdown for hover tooltips using markdown-it.
+ *
+ * Security: raw HTML is disabled (`html: false`) so input docs cannot inject
+ * arbitrary markup into the tooltip.
+ */
+export function renderHoverMarkdown(
+  md: string,
+  highlightCode?: CodeHighlighter,
+): string {
+  const mdParser = createParser(highlightCode);
+  const doc = parseHoverDocWithParser(mdParser, md);
+  return renderHoverDoc(mdParser, doc, highlightCode);
 }
