@@ -101,6 +101,11 @@ exportBtn.addEventListener("click", async () => {
   exportBtn.disabled = true;
   exportBtn.textContent = "Exporting…";
   try {
+    const activeDoc = (
+      activeView ? activeView.state : states[activeFile]
+    ).doc.toString();
+    await project.setText(activeFile, activeDoc);
+
     const pdf = await project.compilePdf();
     const blob = new Blob([pdf.slice()], { type: "application/pdf" });
     const url = URL.createObjectURL(blob);

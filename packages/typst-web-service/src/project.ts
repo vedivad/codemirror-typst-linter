@@ -163,12 +163,16 @@ export class TypstProject {
     return this.compiler.compilePdf(undefined, this._entry);
   }
 
+  private requireAnalyzer(operation: string): TypstAnalyzer {
+    if (!this.analyzer) {
+      throw new Error(`TypstProject: ${operation} requires an analyzer`);
+    }
+    return this.analyzer;
+  }
+
   /** Request completions at the given position. Throws when no analyzer is attached. */
   completion(path: string, line: number, character: number): Promise<unknown> {
-    if (!this.analyzer) {
-      throw new Error("TypstProject: completion requires an analyzer");
-    }
-    return this.analyzer.completion(
+    return this.requireAnalyzer("completion").completion(
       this.toUri(normalizePath(path)),
       line,
       character,
@@ -177,10 +181,7 @@ export class TypstProject {
 
   /** Request hover info at the given position. Throws when no analyzer is attached. */
   hover(path: string, line: number, character: number): Promise<unknown> {
-    if (!this.analyzer) {
-      throw new Error("TypstProject: hover requires an analyzer");
-    }
-    return this.analyzer.hover(
+    return this.requireAnalyzer("hover").hover(
       this.toUri(normalizePath(path)),
       line,
       character,
