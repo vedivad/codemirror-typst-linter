@@ -25,12 +25,13 @@ export type {
   CompileResult,
   FormatConfig,
   TypstCompilerOptions,
-  TypstRendererOptions,
+  TypstProjectOptions,
 } from "@vedivad/typst-web-service";
 export {
   TypstAnalyzer,
   TypstCompiler,
   TypstFormatter,
+  TypstProject,
   TypstRenderer,
 } from "@vedivad/typst-web-service";
 export type {

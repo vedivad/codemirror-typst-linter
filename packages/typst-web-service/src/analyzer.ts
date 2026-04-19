@@ -32,6 +32,11 @@ interface AnalyzerWorkerAPI {
   didOpen(uri: string, content: string): Promise<void>;
   didClose(uri: string): Promise<void>;
   didChange(uri: string, version: number, content: string): Promise<void>;
+  didChangeMany(
+    opens: Array<{ uri: string; content: string }>,
+    changes: Array<{ uri: string; version: number; content: string }>,
+  ): Promise<void>;
+  didCloseMany(uris: string[]): Promise<void>;
   completion(uri: string, line: number, character: number): Promise<unknown>;
   hover(uri: string, line: number, character: number): Promise<unknown>;
   destroy(): void;
@@ -115,6 +120,37 @@ export class TypstAnalyzer {
     }
     const version = ++this.versionCounter;
     await this.proxy.didChange(uri, version, content);
+  }
+
+  /**
+   * Batch document changes. Splits inputs into opens (first-time URIs) and
+   * changes (already-open URIs) and sends them in a single worker roundtrip.
+   */
+  async didChangeMany(docs: Record<string, string>): Promise<void> {
+    const opens: Array<{ uri: string; content: string }> = [];
+    const changes: Array<{ uri: string; version: number; content: string }> =
+      [];
+    for (const [uri, content] of Object.entries(docs)) {
+      if (this.openedUris.has(uri)) {
+        changes.push({ uri, version: ++this.versionCounter, content });
+      } else {
+        opens.push({ uri, content });
+      }
+    }
+    if (opens.length === 0 && changes.length === 0) return;
+    await this.proxy.didChangeMany(opens, changes);
+    for (const { uri } of opens) this.openedUris.add(uri);
+  }
+
+  /**
+   * Batch document closes. Filters to currently-open URIs and sends the set
+   * in a single worker roundtrip.
+   */
+  async didCloseMany(uris: string[]): Promise<void> {
+    const toClose = uris.filter((uri) => this.openedUris.has(uri));
+    if (toClose.length === 0) return;
+    await this.proxy.didCloseMany(toClose);
+    for (const uri of toClose) this.openedUris.delete(uri);
   }
 
   async completion(

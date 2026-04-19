@@ -112,6 +112,35 @@ class AnalyzerWorker {
     this.flushEvents();
   }
 
+  async didChangeMany(
+    opens: Array<{ uri: string; content: string }>,
+    changes: Array<{ uri: string; version: number; content: string }>,
+  ): Promise<void> {
+    if (!this.server) throw new Error("Analyzer not initialized");
+    for (const { uri, content } of opens) {
+      this.server.on_notification("textDocument/didOpen", {
+        textDocument: { uri, languageId: "typst", version: 1, text: content },
+      });
+    }
+    for (const { uri, version, content } of changes) {
+      this.server.on_notification("textDocument/didChange", {
+        textDocument: { uri, version },
+        contentChanges: [{ text: content }],
+      });
+    }
+    this.flushEvents();
+  }
+
+  async didCloseMany(uris: string[]): Promise<void> {
+    if (!this.server) throw new Error("Analyzer not initialized");
+    for (const uri of uris) {
+      this.server.on_notification("textDocument/didClose", {
+        textDocument: { uri },
+      });
+    }
+    this.flushEvents();
+  }
+
   async completion(
     uri: string,
     line: number,
