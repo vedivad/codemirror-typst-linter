@@ -46,6 +46,7 @@ class CompilerWorker {
 
   async compile(
     files?: Record<string, string>,
+    entry?: string,
   ): Promise<{ diagnostics: DiagnosticMessage[]; vector?: Uint8Array }> {
     if (!this.compiler) throw new Error("Compiler not initialized");
     if (files) {
@@ -54,7 +55,7 @@ class CompilerWorker {
       }
     }
     const result = await this.compiler.compile({
-      mainFilePath: MAIN_FILE,
+      mainFilePath: entry ?? MAIN_FILE,
       diagnostics: "full",
     });
     const diagnostics: DiagnosticMessage[] = (result.diagnostics ?? []).flatMap(
@@ -89,7 +90,10 @@ class CompilerWorker {
     return { diagnostics };
   }
 
-  async compilePdf(files?: Record<string, string>): Promise<Uint8Array> {
+  async compilePdf(
+    files?: Record<string, string>,
+    entry?: string,
+  ): Promise<Uint8Array> {
     if (!this.compiler) throw new Error("Compiler not initialized");
     if (files) {
       for (const [path, source] of Object.entries(files)) {
@@ -97,7 +101,7 @@ class CompilerWorker {
       }
     }
     const result = await this.compiler.compile({
-      mainFilePath: MAIN_FILE,
+      mainFilePath: entry ?? MAIN_FILE,
       format: CompileFormatEnum.pdf,
       diagnostics: "none",
     });
@@ -110,6 +114,13 @@ class CompilerWorker {
   mapShadow(path: string, content: Uint8Array): void {
     if (!this.compiler) throw new Error("Compiler not initialized");
     this.compiler.mapShadow(path, content);
+  }
+
+  mapShadowMany(files: Record<string, Uint8Array>): void {
+    if (!this.compiler) throw new Error("Compiler not initialized");
+    for (const [path, content] of Object.entries(files)) {
+      this.compiler.mapShadow(path, content);
+    }
   }
 
   unmapShadow(path: string): void {

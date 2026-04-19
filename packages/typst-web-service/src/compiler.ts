@@ -6,9 +6,14 @@ interface CompilerWorkerAPI {
   init(wasmUrl: string, fontUrls: string[], packages: boolean): Promise<void>;
   compile(
     files?: Record<string, string>,
+    entry?: string,
   ): Promise<{ diagnostics: DiagnosticMessage[]; vector?: Uint8Array }>;
-  compilePdf(files?: Record<string, string>): Promise<Uint8Array>;
+  compilePdf(
+    files?: Record<string, string>,
+    entry?: string,
+  ): Promise<Uint8Array>;
   mapShadow(path: string, content: Uint8Array): void;
+  mapShadowMany(files: Record<string, Uint8Array>): void;
   unmapShadow(path: string): void;
   resetShadow(): void;
   destroy(): void;
@@ -50,11 +55,16 @@ const DEFAULT_FONTS = [
 const DEFAULT_WASM_URL =
   "https://cdn.jsdelivr.net/npm/@myriaddreamin/typst-ts-web-compiler@0.7.0-rc2/pkg/typst_ts_web_compiler_bg.wasm";
 
+const DEFAULT_ENTRY = "/main.typ";
+
 function toFiles(
   source?: string | Record<string, string>,
+  entry?: string,
 ): Record<string, string> | undefined {
   if (source === undefined) return undefined;
-  return typeof source === "string" ? { "/main.typ": source } : source;
+  return typeof source === "string"
+    ? { [entry ?? DEFAULT_ENTRY]: source }
+    : source;
 }
 
 /**
@@ -98,25 +108,31 @@ export class TypstCompiler {
   }
 
   /**
-   * Compile. Pass a source string (treated as /main.typ) or a map of files to
-   * register before compiling; omit to compile whatever is currently in the VFS
-   * (populated via setText/setBinary/setJson).
+   * Compile. Pass a source string (written to the entry path) or a map of
+   * files to register before compiling; omit to compile whatever is currently
+   * in the VFS (populated via setText/setBinary/setJson/setMany).
+   * Defaults to compiling "/main.typ"; override with `entry`.
    */
   async compile(
     source?: string | Record<string, string>,
+    entry?: string,
   ): Promise<CompileResult> {
-    const result = await this.proxy.compile(toFiles(source));
+    const result = await this.proxy.compile(toFiles(source, entry), entry);
     if (result.vector) this.lastVector = result.vector;
     return result;
   }
 
   /**
-   * Compile to PDF. Pass a source string (treated as /main.typ) or a map of
-   * files to register before compiling; omit to compile whatever is currently
-   * in the VFS (populated via setText/setBinary/setJson).
+   * Compile to PDF. Pass a source string (written to the entry path) or a map
+   * of files to register before compiling; omit to compile whatever is
+   * currently in the VFS (populated via setText/setBinary/setJson/setMany).
+   * Defaults to compiling "/main.typ"; override with `entry`.
    */
-  compilePdf(source?: string | Record<string, string>): Promise<Uint8Array> {
-    return this.proxy.compilePdf(toFiles(source));
+  compilePdf(
+    source?: string | Record<string, string>,
+    entry?: string,
+  ): Promise<Uint8Array> {
+    return this.proxy.compilePdf(toFiles(source, entry), entry);
   }
 
   /** Add or overwrite a text file in the virtual compiler filesystem. */
@@ -132,6 +148,20 @@ export class TypstCompiler {
     space?: string | number,
   ): Promise<void> {
     return this.setText(path, JSON.stringify(value, replacer, space));
+  }
+
+  /**
+   * Add or overwrite multiple files in the virtual compiler filesystem in a
+   * single worker roundtrip. Strings are UTF-8 encoded; Uint8Arrays are passed
+   * through.
+   */
+  setMany(files: Record<string, string | Uint8Array>): Promise<void> {
+    const encoded: Record<string, Uint8Array> = {};
+    for (const [path, content] of Object.entries(files)) {
+      encoded[path] =
+        typeof content === "string" ? this.encoder.encode(content) : content;
+    }
+    return this.proxy.mapShadowMany(encoded);
   }
 
   /** Add or overwrite a binary file in the virtual compiler filesystem. */
