@@ -1,19 +1,11 @@
 import { type Diagnostic, setDiagnostics } from "@codemirror/lint";
 import type { EditorView, ViewUpdate } from "@codemirror/view";
-import type {
-  AnalyzerSession,
-  LspDiagnostic,
-  TypstCompiler,
-} from "@vedivad/typst-web-service";
+import type { LspDiagnostic, TypstProject } from "@vedivad/typst-web-service";
 import { lspToCMDiagnostic } from "./diagnostics.js";
 import { type BasePluginOptions, PluginDriver } from "./plugin-driver.js";
-import { gatherFiles } from "./utils.js";
 
 export interface PushDiagnosticsPluginOptions extends BasePluginOptions {
-  session: AnalyzerSession;
-  /** Whether this plugin owns the session and should destroy it on teardown. Default: true. */
-  ownsSession?: boolean;
-  compiler: TypstCompiler;
+  project: TypstProject;
 }
 
 export class PushDiagnosticsPlugin {
@@ -33,7 +25,6 @@ export class PushDiagnosticsPlugin {
     });
 
     if (view) {
-      // Bind before starting so cached diagnostics replay synchronously.
       this.bindPushDiagnostics(view);
       this.driver.start(view);
     }
@@ -48,9 +39,6 @@ export class PushDiagnosticsPlugin {
     this.driver.dispose();
     if (this.rafId != null) cancelAnimationFrame(this.rafId);
     this.unsubscribeDiagnostics?.();
-    if (this.options.ownsSession !== false) {
-      this.options.session.destroy();
-    }
   }
 
   private onPathChange(view: EditorView): void {
@@ -65,17 +53,13 @@ export class PushDiagnosticsPlugin {
     const { signal } = this.driver.controller;
 
     const source = view.state.doc.toString();
-    const files = gatherFiles(
-      this.options.getFiles,
-      this.driver.currentPath,
-      source,
-    );
+    const path = this.driver.currentPath;
 
-    await this.options.session.sync(this.driver.currentPath, files);
+    await this.options.project.setText(path, source);
     if (signal.aborted) return;
 
     try {
-      const result = await this.options.compiler.compile(files);
+      const result = await this.options.project.compile();
       if (signal.aborted) return;
       this.options.onCompile?.(result);
     } catch (err) {
@@ -86,7 +70,7 @@ export class PushDiagnosticsPlugin {
   private bindPushDiagnostics(view: EditorView): void {
     if (this.unsubscribeDiagnostics) return;
 
-    this.unsubscribeDiagnostics = this.options.session.subscribe(
+    this.unsubscribeDiagnostics = this.options.project.onDiagnostics(
       this.driver.currentPath,
       (lspDiags: LspDiagnostic[]) => {
         const cmDiags = lspDiags.map((d) => lspToCMDiagnostic(view.state, d));

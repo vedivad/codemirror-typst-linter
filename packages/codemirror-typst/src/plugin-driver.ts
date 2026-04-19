@@ -10,8 +10,6 @@ export interface BasePluginOptions {
   debounceDelay?: number;
   /** Throttle delay in ms — guarantees a run at least this often during continuous typing. */
   throttleDelay?: number;
-  /** Return all project files. The current editor's content is included automatically under filePath. */
-  getFiles?: () => Record<string, string>;
   /** Called after each successful compile with the full result. */
   onCompile?: (result: CompileResult) => void;
   onDiagnostics?: (diagnostics: Diagnostic[]) => void;

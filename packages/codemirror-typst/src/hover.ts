@@ -1,16 +1,14 @@
 import { forEachDiagnostic } from "@codemirror/lint";
 import type { EditorState, Extension } from "@codemirror/state";
 import { hoverTooltip, type Tooltip } from "@codemirror/view";
-import type { AnalyzerSession } from "@vedivad/typst-web-service";
+import type { TypstProject } from "@vedivad/typst-web-service";
 import { renderHoverMarkdown } from "./hover-markdown.js";
-import { gatherFiles, toPathGetter } from "./utils.js";
+import { toPathGetter } from "./utils.js";
 
 export interface TypstHoverOptions {
-  session: AnalyzerSession;
+  project: TypstProject;
   /** File path this editor represents. Default: () => "/main.typ" */
   filePath?: () => string;
-  /** Return all project files. The editor's content is included automatically under filePath. */
-  getFiles?: () => Record<string, string>;
   /** Optional function to syntax-highlight code blocks. Receives code and language, returns HTML string. */
   highlightCode?: (code: string, language: string) => string;
 }
@@ -67,7 +65,8 @@ function lspHoverToCM(
 }
 
 /**
- * Create a CM6 hover tooltip extension backed by a tinymist AnalyzerSession.
+ * Create a CM6 hover tooltip extension backed by a TypstProject. The editor's
+ * current content is pushed via `setText` before requesting hover info.
  */
 export function createTypstHover(options: TypstHoverOptions): Extension {
   const getPath = toPathGetter(options.filePath);
@@ -82,14 +81,14 @@ export function createTypstHover(options: TypstHoverOptions): Extension {
 
     const path = getPath();
     const source = view.state.doc.toString();
-    const files = gatherFiles(options.getFiles, path, source);
 
     const line = view.state.doc.lineAt(pos);
     const lspLine = line.number - 1;
     const lspChar = pos - line.from;
 
     try {
-      const result = await options.session.hover(path, files, lspLine, lspChar);
+      await options.project.setText(path, source);
+      const result = await options.project.hover(path, lspLine, lspChar);
       if (!result) return null;
       return lspHoverToCM(view.state, pos, result, options.highlightCode);
     } catch {

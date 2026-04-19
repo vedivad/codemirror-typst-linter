@@ -5,6 +5,7 @@ import {
   TypstAnalyzer,
   TypstCompiler,
   TypstFormatter,
+  TypstProject,
   TypstRenderer,
 } from "@vedivad/codemirror-typst";
 import { basicSetup, EditorView } from "codemirror";
@@ -27,6 +28,9 @@ const [formatter, compiler, renderer, analyzer] = await Promise.all([
   TypstAnalyzer.create({ wasmUrl: tinymistWasmUrl }),
 ]);
 
+const project = new TypstProject({ compiler, analyzer });
+await project.setMany(files);
+
 const filePaths = Object.keys(files);
 
 // --- Editor state ---
@@ -37,18 +41,14 @@ let activeView: EditorView | null = null;
 // --- Shared extensions (one plugin instance survives tab switches via shared extension refs) ---
 
 const typstExtensions = await createTypstExtensions({
+  project,
   filePath: () => activeFile,
-  getFiles: () => files,
-  compiler: {
-    instance: compiler,
-    onCompile: async (result) => {
-      if (result.vector) {
-        const svg = await renderer.renderSvg(result.vector);
-        previewEl.innerHTML = `<div class="svg-container">${svg}</div>`;
-      }
-    },
+  onCompile: async (result) => {
+    if (result.vector) {
+      const svg = await renderer.renderSvg(result.vector);
+      previewEl.innerHTML = `<div class="svg-container">${svg}</div>`;
+    }
   },
-  analyzer: { instance: analyzer },
   formatter: { instance: formatter, formatOnSave: true },
   highlighting: { theme: "dark" },
   onDiagnostics: (d) => {
@@ -69,7 +69,6 @@ const states: Record<string, EditorState> = Object.fromEntries(
 
 function switchTab(path: string) {
   if (activeView) {
-    files[activeFile] = activeView.state.doc.toString();
     states[activeFile] = activeView.state;
   }
 
@@ -101,13 +100,10 @@ function renderTabs() {
 // --- PDF export ---
 
 exportBtn.addEventListener("click", async () => {
-  if (activeView) {
-    files[activeFile] = activeView.state.doc.toString();
-  }
   exportBtn.disabled = true;
   exportBtn.textContent = "Exporting…";
   try {
-    const pdf = await compiler.compilePdf(files);
+    const pdf = await project.compilePdf();
     const blob = new Blob([pdf.slice()], { type: "application/pdf" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");

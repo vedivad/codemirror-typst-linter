@@ -1,12 +1,11 @@
 import { type Diagnostic, setDiagnostics } from "@codemirror/lint";
 import type { EditorView, ViewUpdate } from "@codemirror/view";
-import type { TypstCompiler } from "@vedivad/typst-web-service";
+import type { TypstProject } from "@vedivad/typst-web-service";
 import { toCMDiagnostic } from "./diagnostics.js";
 import { type BasePluginOptions, PluginDriver } from "./plugin-driver.js";
-import { gatherFiles } from "./utils.js";
 
 export interface CompilerLintPluginOptions extends BasePluginOptions {
-  compiler: TypstCompiler;
+  project: TypstProject;
 }
 
 export class CompilerLintPlugin {
@@ -34,19 +33,18 @@ export class CompilerLintPlugin {
     const { signal } = this.driver.controller;
 
     const source = view.state.doc.toString();
-    const files = gatherFiles(
-      this.options.getFiles,
-      this.driver.currentPath,
-      source,
-    );
+    const path = this.driver.currentPath;
+
+    await this.options.project.setText(path, source);
+    if (signal.aborted) return;
 
     try {
-      const result = await this.options.compiler.compile(files);
+      const result = await this.options.project.compile();
       if (signal.aborted) return;
 
       this.options.onCompile?.(result);
       const diagnostics = result.diagnostics
-        .filter((d) => d.path === this.driver.currentPath)
+        .filter((d) => d.path === path)
         .map((d) => toCMDiagnostic(view.state, d));
 
       this.options.onDiagnostics?.(diagnostics);

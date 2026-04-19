@@ -3,15 +3,13 @@ import type {
   CompletionContext,
   CompletionResult,
 } from "@codemirror/autocomplete";
-import type { AnalyzerSession } from "@vedivad/typst-web-service";
-import { gatherFiles, toPathGetter } from "./utils.js";
+import type { TypstProject } from "@vedivad/typst-web-service";
+import { toPathGetter } from "./utils.js";
 
 export interface TypstCompletionOptions {
-  session: AnalyzerSession;
+  project: TypstProject;
   /** File path this editor represents. Default: () => "/main.typ" */
   filePath?: () => string;
-  /** Return all project files. The editor's content is included automatically under filePath. */
-  getFiles?: () => Record<string, string>;
 }
 
 /** LSP CompletionItemKind → CM6 completion type */
@@ -120,7 +118,9 @@ function lspCompletionToCM(
 }
 
 /**
- * Create a CM6 CompletionSource backed by a tinymist AnalyzerSession.
+ * Create a CM6 CompletionSource backed by a TypstProject. The editor's current
+ * content is pushed via `setText` before requesting completions, so the
+ * analyzer always sees the latest buffer state.
  */
 export function typstCompletionSource(
   options: TypstCompletionOptions,
@@ -133,19 +133,14 @@ export function typstCompletionSource(
 
     const path = getPath();
     const source = ctx.state.doc.toString();
-    const files = gatherFiles(options.getFiles, path, source);
 
     const line = ctx.state.doc.lineAt(ctx.pos);
     const lspLine = line.number - 1;
     const lspChar = ctx.pos - line.from;
 
     try {
-      const result = await options.session.completion(
-        path,
-        files,
-        lspLine,
-        lspChar,
-      );
+      await options.project.setText(path, source);
+      const result = await options.project.completion(path, lspLine, lspChar);
       if (!result) return null;
       return lspCompletionToCM(ctx, result);
     } catch {

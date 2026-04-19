@@ -8,8 +8,10 @@ function mockView(doc: string) {
   return { state, dispatch: vi.fn() } as any;
 }
 
-function mockCompiler(diagnostics: DiagnosticMessage[] = []) {
+function mockProject(diagnostics: DiagnosticMessage[] = []) {
   return {
+    hasAnalyzer: false,
+    setText: vi.fn().mockResolvedValue(undefined),
     compile: vi.fn().mockResolvedValue({ diagnostics }),
   } as any;
 }
@@ -44,10 +46,10 @@ describe("CompilerLintPlugin", () => {
         message: "ignored",
       },
     ];
-    const compiler = mockCompiler(diags);
+    const project = mockProject(diags);
     const onDiagnostics = vi.fn();
     const view = mockView("abc");
-    new CompilerLintPlugin({ compiler, onDiagnostics }, view);
+    new CompilerLintPlugin({ project, onDiagnostics }, view);
 
     await waitFor(() => onDiagnostics.mock.calls.length > 0);
     expect(onDiagnostics).toHaveBeenCalledWith(
@@ -57,12 +59,14 @@ describe("CompilerLintPlugin", () => {
   });
 
   it("returns error diagnostic when compile throws", async () => {
-    const compiler = {
+    const project = {
+      hasAnalyzer: false,
+      setText: vi.fn().mockResolvedValue(undefined),
       compile: vi.fn().mockRejectedValue(new Error("boom")),
     } as any;
     const onDiagnostics = vi.fn();
     const view = mockView("x");
-    new CompilerLintPlugin({ compiler, onDiagnostics }, view);
+    new CompilerLintPlugin({ project, onDiagnostics }, view);
 
     await waitFor(() => onDiagnostics.mock.calls.length > 0);
     const result = onDiagnostics.mock.calls[0][0];
@@ -71,26 +75,22 @@ describe("CompilerLintPlugin", () => {
     expect(result[0].message).toBe("boom");
   });
 
-  it("passes merged files to compiler.compile", async () => {
-    const compiler = mockCompiler();
-    const getFiles = () => ({ "/lib.typ": "// lib" });
+  it("pushes the editor's content to the project before compiling", async () => {
+    const project = mockProject();
     const view = mockView("hello");
-    new CompilerLintPlugin(
-      { compiler, filePath: () => "/main.typ", getFiles },
-      view,
-    );
+    new CompilerLintPlugin({ project, filePath: () => "/main.typ" }, view);
 
-    await waitFor(() => compiler.compile.mock.calls.length > 0);
-    expect(compiler.compile).toHaveBeenCalledWith({
-      "/lib.typ": "// lib",
-      "/main.typ": "hello",
-    });
+    await waitFor(() => project.compile.mock.calls.length > 0);
+    expect(project.setText).toHaveBeenCalledWith("/main.typ", "hello");
+    expect(project.setText).toHaveBeenCalledBefore(project.compile);
   });
 
   it("aborts previous compile when a new one starts", async () => {
     const onCompile = vi.fn();
     let resolveFirst: (v: any) => void;
-    const compiler = {
+    const project = {
+      hasAnalyzer: false,
+      setText: vi.fn().mockResolvedValue(undefined),
       compile: vi
         .fn()
         .mockImplementationOnce(
@@ -113,16 +113,16 @@ describe("CompilerLintPlugin", () => {
     } as any;
 
     const view = mockView("x");
-    const plugin = new CompilerLintPlugin({ compiler, onCompile }, view);
+    const plugin = new CompilerLintPlugin({ project, onCompile }, view);
 
     // Wait for first compile to start
-    await waitFor(() => compiler.compile.mock.calls.length > 0);
+    await waitFor(() => project.compile.mock.calls.length > 0);
 
     // Trigger second compile via update
     plugin.update({ docChanged: true, view } as any);
 
     // Wait for second compile
-    await waitFor(() => compiler.compile.mock.calls.length > 1);
+    await waitFor(() => project.compile.mock.calls.length > 1);
 
     // Resolve the first compile — its callback should not fire (aborted)
     resolveFirst!({
