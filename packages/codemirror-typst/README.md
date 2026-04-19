@@ -134,6 +134,30 @@ formatter: {
 - Diagnostics are always pulled from `TypstCompiler` after each compile.
 - `TypstAnalyzer` is used for editor intelligence only (autocompletion and hover).
 
+## Styling hover tooltips
+
+Hover content is rendered with stable CSS class names, so you can style it from your app stylesheet.
+
+By default, the plugin only sets hover scroll behavior inline (`max-height` + `overflow`) and leaves visual theming to your CSS.
+
+Useful selectors:
+
+- `.cm-typst-hover`
+- `.cm-typst-hover-content`
+- `.cm-typst-hover-header`
+- `.cm-typst-hover-header-main`
+- `.cm-typst-hover-header-actions`
+- `.cm-typst-hover-signature`
+- `.cm-typst-hover-summary`
+- `.cm-typst-hover-open-docs`
+- `.cm-typst-hover-section`
+- `.cm-typst-hover-pre`
+
+You can also control header element order with CSS (for example via `order` on `.cm-typst-hover-summary`, `.cm-typst-hover-signature`, and `.cm-typst-hover-header-actions`).
+
+```
+
 ## License
 
 MIT
+```

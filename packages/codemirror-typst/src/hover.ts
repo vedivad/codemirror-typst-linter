@@ -2,7 +2,7 @@ import { forEachDiagnostic } from "@codemirror/lint";
 import type { EditorState, Extension } from "@codemirror/state";
 import { hoverTooltip, type Tooltip } from "@codemirror/view";
 import type { TypstProject } from "@vedivad/typst-web-service";
-import { renderHoverMarkdown } from "./hover-markdown.js";
+import { renderHoverMarkdown, type CodeHighlighter } from "./hover-markdown.js";
 import { toPathGetter } from "./utils.js";
 
 export interface TypstHoverOptions {
@@ -10,7 +10,7 @@ export interface TypstHoverOptions {
   /** File path this editor represents. Default: () => "/main.typ" */
   filePath?: () => string;
   /** Optional function to syntax-highlight code blocks. Receives code and language, returns HTML string. */
-  highlightCode?: (code: string, language: string) => string;
+  highlightCode?: CodeHighlighter;
 }
 
 interface LspHoverResult {
@@ -38,7 +38,7 @@ function lspHoverToCM(
   state: EditorState,
   pos: number,
   result: unknown,
-  highlightCode?: (code: string, language: string) => string,
+  highlightCode?: CodeHighlighter,
 ): Tooltip | null {
   const hover = result as LspHoverResult | null;
   if (!hover?.contents) return null;
@@ -47,18 +47,24 @@ function lspHoverToCM(
   if (!text.trim()) return null;
 
   let from = pos;
+  let to = pos;
   if (hover.range) {
-    const line = state.doc.line(hover.range.start.line + 1);
-    from = line.from + hover.range.start.character;
+    const startLine = state.doc.line(hover.range.start.line + 1);
+    const endLine = state.doc.line(hover.range.end.line + 1);
+    from = startLine.from + hover.range.start.character;
+    to = endLine.from + hover.range.end.character;
   }
 
   return {
     pos: from,
+    end: to,
     above: true,
     create() {
       const dom = document.createElement("div");
       dom.className = "cm-typst-hover";
       dom.innerHTML = renderHoverMarkdown(text, highlightCode);
+      dom.style.maxHeight = "26rem";
+      dom.style.overflow = "auto";
       return { dom };
     },
   };

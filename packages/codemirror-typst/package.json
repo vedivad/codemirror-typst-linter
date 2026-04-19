@@ -34,6 +34,7 @@
   "dependencies": {
     "@vedivad/typst-web-service": "workspace:^",
     "codemirror-shiki": "^0.3.0",
+    "markdown-it": "^14.1.1",
     "shiki": "^4"
   },
   "devDependencies": {
