@@ -39,7 +39,7 @@ export class TypstProject {
   private readonly analyzer?: TypstAnalyzer;
   private readonly rootPath: string;
   private readonly trackedTextPaths = new Set<string>();
-  /** Last content sent to the analyzer, per path. Used to skip redundant `didChange` calls. */
+  /** Last content written via setText/setMany, per path. Used to skip redundant writes to compiler + analyzer. */
   private readonly lastSyncedContent = new Map<string, string>();
   private _entry: string;
 
@@ -67,23 +67,19 @@ export class TypstProject {
 
   /**
    * Add or overwrite a text file. Goes to the compiler's VFS and, when an
-   * analyzer is attached, to the analyzer as a document change.
+   * analyzer is attached, to the analyzer as a document change. Redundant
+   * calls with unchanged content are skipped.
    */
   async setText(path: string, content: string): Promise<void> {
     const p = normalizePath(path);
     this.trackedTextPaths.add(p);
+    if (this.lastSyncedContent.get(p) === content) return;
+    this.lastSyncedContent.set(p, content);
     const ops: Array<Promise<void>> = [this.compiler.setText(p, content)];
     if (this.analyzer) {
-      ops.push(this.syncToAnalyzer(p, content));
+      ops.push(this.analyzer.didChange(this.toUri(p), content));
     }
     await Promise.all(ops);
-  }
-
-  private async syncToAnalyzer(path: string, content: string): Promise<void> {
-    if (!this.analyzer) return;
-    if (this.lastSyncedContent.get(path) === content) return;
-    this.lastSyncedContent.set(path, content);
-    await this.analyzer.didChange(this.toUri(path), content);
   }
 
   /**
