@@ -45,11 +45,13 @@ class CompilerWorker {
   }
 
   async compile(
-    files: Record<string, string>,
+    files?: Record<string, string>,
   ): Promise<{ diagnostics: DiagnosticMessage[]; vector?: Uint8Array }> {
     if (!this.compiler) throw new Error("Compiler not initialized");
-    for (const [path, source] of Object.entries(files)) {
-      this.compiler.addSource(path, source);
+    if (files) {
+      for (const [path, source] of Object.entries(files)) {
+        this.compiler.addSource(path, source);
+      }
     }
     const result = await this.compiler.compile({
       mainFilePath: MAIN_FILE,
@@ -87,10 +89,12 @@ class CompilerWorker {
     return { diagnostics };
   }
 
-  async compilePdf(files: Record<string, string>): Promise<Uint8Array> {
+  async compilePdf(files?: Record<string, string>): Promise<Uint8Array> {
     if (!this.compiler) throw new Error("Compiler not initialized");
-    for (const [path, source] of Object.entries(files)) {
-      this.compiler.addSource(path, source);
+    if (files) {
+      for (const [path, source] of Object.entries(files)) {
+        this.compiler.addSource(path, source);
+      }
     }
     const result = await this.compiler.compile({
       mainFilePath: MAIN_FILE,
@@ -101,11 +105,6 @@ class CompilerWorker {
     return Comlink.transfer(result.result, [
       result.result.buffer as ArrayBuffer,
     ]);
-  }
-
-  addSource(path: string, source: string): void {
-    if (!this.compiler) throw new Error("Compiler not initialized");
-    this.compiler.addSource(path, source);
   }
 
   mapShadow(path: string, content: Uint8Array): void {

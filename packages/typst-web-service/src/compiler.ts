@@ -5,10 +5,9 @@ import type { DiagnosticMessage } from "./types.js";
 interface CompilerWorkerAPI {
   init(wasmUrl: string, fontUrls: string[], packages: boolean): Promise<void>;
   compile(
-    files: Record<string, string>,
+    files?: Record<string, string>,
   ): Promise<{ diagnostics: DiagnosticMessage[]; vector?: Uint8Array }>;
-  compilePdf(files: Record<string, string>): Promise<Uint8Array>;
-  addSource(path: string, source: string): void;
+  compilePdf(files?: Record<string, string>): Promise<Uint8Array>;
   mapShadow(path: string, content: Uint8Array): void;
   unmapShadow(path: string): void;
   resetShadow(): void;
@@ -52,8 +51,9 @@ const DEFAULT_WASM_URL =
   "https://cdn.jsdelivr.net/npm/@myriaddreamin/typst-ts-web-compiler@0.7.0-rc2/pkg/typst_ts_web_compiler_bg.wasm";
 
 function toFiles(
-  source: string | Record<string, string>,
-): Record<string, string> {
+  source?: string | Record<string, string>,
+): Record<string, string> | undefined {
+  if (source === undefined) return undefined;
   return typeof source === "string" ? { "/main.typ": source } : source;
 }
 
@@ -97,62 +97,45 @@ export class TypstCompiler {
     return new TypstCompiler(worker, proxy);
   }
 
-  /** Compile a single source string (treated as /main.typ) or a map of files. */
+  /**
+   * Compile. Pass a source string (treated as /main.typ) or a map of files to
+   * register before compiling; omit to compile whatever is currently in the VFS
+   * (populated via setText/setBinary/setJson).
+   */
   async compile(
-    source: string | Record<string, string>,
+    source?: string | Record<string, string>,
   ): Promise<CompileResult> {
     const result = await this.proxy.compile(toFiles(source));
     if (result.vector) this.lastVector = result.vector;
     return result;
   }
 
-  /** Compile to PDF from a single source string (treated as /main.typ) or a map of files. */
-  async compilePdf(
-    source: string | Record<string, string>,
-  ): Promise<Uint8Array> {
+  /**
+   * Compile to PDF. Pass a source string (treated as /main.typ) or a map of
+   * files to register before compiling; omit to compile whatever is currently
+   * in the VFS (populated via setText/setBinary/setJson).
+   */
+  compilePdf(source?: string | Record<string, string>): Promise<Uint8Array> {
     return this.proxy.compilePdf(toFiles(source));
   }
 
-  /** Add or overwrite a text source file. */
-  async addSource(path: string, source: string): Promise<void> {
-    await this.proxy.addSource(path, source);
-  }
-
-  /** Add or overwrite an in-memory shadow file (text or binary). */
-  async mapShadow(path: string, content: Uint8Array): Promise<void> {
-    await this.proxy.mapShadow(path, content);
-  }
-
-  /** Remove an in-memory shadow file by path. */
-  async unmapShadow(path: string): Promise<void> {
-    await this.proxy.unmapShadow(path);
-  }
-
-  /**
-   * Clear all shadow files held by the compiler.
-   * Note: this also clears files previously added via addSource in the compiler runtime.
-   */
-  async resetShadow(): Promise<void> {
-    await this.proxy.resetShadow();
-  }
-
   /** Add or overwrite a text file in the virtual compiler filesystem. */
-  async setText(path: string, source: string): Promise<void> {
-    await this.mapShadow(path, this.encoder.encode(source));
+  setText(path: string, source: string): Promise<void> {
+    return this.proxy.mapShadow(path, this.encoder.encode(source));
   }
 
   /** Add or overwrite a JSON file in the virtual compiler filesystem. */
-  async setJson(
+  setJson(
     path: string,
     value: unknown,
     replacer?: (this: unknown, key: string, value: unknown) => unknown,
     space?: string | number,
   ): Promise<void> {
-    await this.setText(path, JSON.stringify(value, replacer, space));
+    return this.setText(path, JSON.stringify(value, replacer, space));
   }
 
   /** Add or overwrite a binary file in the virtual compiler filesystem. */
-  async setBinary(
+  setBinary(
     path: string,
     content: ArrayBuffer | ArrayBufferView,
   ): Promise<void> {
@@ -164,17 +147,17 @@ export class TypstCompiler {
             content.byteOffset,
             content.byteLength,
           );
-    await this.mapShadow(path, bytes);
+    return this.proxy.mapShadow(path, bytes);
   }
 
   /** Remove a file from the virtual compiler filesystem. */
-  async remove(path: string): Promise<void> {
-    await this.unmapShadow(path);
+  remove(path: string): Promise<void> {
+    return this.proxy.unmapShadow(path);
   }
 
   /** Clear all virtual files from the compiler filesystem. */
-  async clear(): Promise<void> {
-    await this.resetShadow();
+  clear(): Promise<void> {
+    return this.proxy.resetShadow();
   }
 
   destroy(): void {
