@@ -73,7 +73,7 @@ export class TypstRenderer {
 
   async #init(): Promise<RendererInstance> {
     const mod = await getRendererModule();
-    await mod.default(this.wasmUrl);
+    await mod.default({ module_or_path: this.wasmUrl });
     return new mod.TypstRendererBuilder().build();
   }
 

@@ -30,7 +30,7 @@ class AnalyzerWorker {
     onDiagnostics: DiagnosticsCallback,
   ): Promise<void> {
     this.onDiagnostics = onDiagnostics;
-    await init(wasmUrl);
+    await init({ module_or_path: wasmUrl });
 
     this.server = new TinymistLanguageServer({
       sendEvent: (event: any): void => {
