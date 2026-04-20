@@ -68,6 +68,7 @@ export class TypstProject {
   private compileVersion = 0;
   private _lastResult: CompileResult | undefined;
   private _entry: Path;
+  private destroyed = false;
 
   constructor(options: TypstProjectOptions) {
     this.compiler = options.compiler;
@@ -292,5 +293,26 @@ export class TypstProject {
       line,
       character,
     );
+  }
+
+  /**
+   * Tear down the project and the services it owns. Destroys the attached
+   * compiler and analyzer, drops all listeners, and clears VFS tracking state.
+   * Idempotent — calling twice is a no-op. After destruction, further calls on
+   * the project are not supported; construct a new one.
+   *
+   * If you need to share a compiler or analyzer across projects, destroy them
+   * yourself and don't call this method — the project does not provide an
+   * ownership toggle.
+   */
+  destroy(): void {
+    if (this.destroyed) return;
+    this.destroyed = true;
+    this.compileListeners.clear();
+    this.trackedTextPaths.clear();
+    this.lastSyncedContent.clear();
+    this._lastResult = undefined;
+    this.compiler.destroy();
+    this.analyzer?.destroy();
   }
 }
