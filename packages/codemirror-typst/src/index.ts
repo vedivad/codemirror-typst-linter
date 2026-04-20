@@ -1,15 +1,15 @@
 import { autocompletion } from "@codemirror/autocomplete";
 import { lintGutter } from "@codemirror/lint";
 import type { Extension } from "@codemirror/state";
-import { ViewPlugin } from "@codemirror/view";
 import type { TypstProject } from "@vedivad/typst-web-service";
+import { createTypstCompileSync } from "./compile-sync.js";
 import { typstCompletionSource } from "./completion.js";
 import { toCMDiagnostic } from "./diagnostics.js";
+import { createTypstDiagnostics } from "./diagnostics-plugin.js";
 import { typstFilePath } from "./facets.js";
 import type { TypstFormatterOptions } from "./formatter.js";
 import { createTypstFormatter } from "./formatter.js";
 import { createTypstHover } from "./hover.js";
-import { CompilerLintPlugin } from "./compiler-plugin.js";
 import type { TypstShikiHighlighting, TypstShikiOptions } from "./shiki.js";
 import {
   createTypstShikiExtension,
@@ -41,14 +41,18 @@ export type {
   TypstShikiOptions,
 };
 export {
-  diagnosticLocation,
+  createTypstCompileSync,
+  createTypstDiagnostics,
   createTypstFormatter,
   createTypstShikiExtension,
   createTypstShikiHighlighting,
+  diagnosticLocation,
   groupDiagnosticsByFile,
   toCMDiagnostic,
   typstFilePath,
 };
+export type { CompileSyncOptions } from "./compile-sync.js";
+export type { DiagnosticsPluginOptions } from "./diagnostics-plugin.js";
 
 // ---------------------------------------------------------------------------
 // High-level API: createTypstExtensions
@@ -119,20 +123,10 @@ export async function createTypstExtensions(
   const throttleDelay = options.throttleDelay;
   const extensions: Extension[] = [shiki.extension, lintGutter()];
 
-  const compilerPlugin = ViewPlugin.define(
-    (view) =>
-      new CompilerLintPlugin(
-        {
-          project,
-          debounceDelay: delay,
-          throttleDelay,
-        },
-        view,
-      ),
-    {},
+  extensions.push(
+    createTypstCompileSync({ project, debounceDelay: delay, throttleDelay }),
+    createTypstDiagnostics({ project }),
   );
-
-  extensions.push(compilerPlugin);
 
   if (project.hasAnalyzer) {
     extensions.push(

@@ -4,7 +4,8 @@ import type {
   DiagnosticMessage,
 } from "@vedivad/typst-web-service";
 import { describe, expect, it, vi } from "vitest";
-import { CompilerLintPlugin } from "../compiler-plugin.js";
+import { CompileSyncPlugin } from "../compile-sync.js";
+import { DiagnosticsPlugin } from "../diagnostics-plugin.js";
 
 function mockView(doc: string) {
   const state = EditorState.create({ doc });
@@ -45,27 +46,32 @@ function waitFor(fn: () => boolean, timeout = 1000): Promise<void> {
   });
 }
 
-describe("CompilerLintPlugin", () => {
+describe("CompileSyncPlugin", () => {
   it("pushes the editor's content to the project before compiling", async () => {
     const project = mockProject();
     const view = mockView("hello");
-    new CompilerLintPlugin(
-      { project: project as any },
-      view,
-    );
+    new CompileSyncPlugin({ project: project as any }, view);
 
     await waitFor(() => project.compile.mock.calls.length > 0);
     expect(project.setText).toHaveBeenCalledWith("/main.typ", "hello");
     expect(project.setText).toHaveBeenCalledBefore(project.compile);
   });
 
-  it("subscribes to project.onCompile on construction and unsubscribes on destroy", () => {
+  it("does not subscribe to compile events", () => {
     const project = mockProject();
     const view = mockView("x");
-    const plugin = new CompilerLintPlugin(
-      { project: project as any },
-      view,
-    );
+    new CompileSyncPlugin({ project: project as any }, view);
+
+    expect(project.onCompile).not.toHaveBeenCalled();
+    expect(project.listeners.size).toBe(0);
+  });
+});
+
+describe("DiagnosticsPlugin", () => {
+  it("subscribes on construction and unsubscribes on destroy", () => {
+    const project = mockProject();
+    const view = mockView("x");
+    const plugin = new DiagnosticsPlugin({ project: project as any }, view);
 
     expect(project.onCompile).toHaveBeenCalledTimes(1);
     expect(project.listeners.size).toBe(1);
@@ -74,7 +80,16 @@ describe("CompilerLintPlugin", () => {
     expect(project.listeners.size).toBe(0);
   });
 
-  it("dispatches to the view when project fires a compile event", async () => {
+  it("does not push content or compile", () => {
+    const project = mockProject();
+    const view = mockView("x");
+    new DiagnosticsPlugin({ project: project as any }, view);
+
+    expect(project.setText).not.toHaveBeenCalled();
+    expect(project.compile).not.toHaveBeenCalled();
+  });
+
+  it("dispatches diagnostics filtered to the active path", async () => {
     const diags: DiagnosticMessage[] = [
       {
         package: "",
@@ -93,11 +108,9 @@ describe("CompilerLintPlugin", () => {
     ];
     const project = mockProject(diags);
     const view = mockView("abc");
-    new CompilerLintPlugin(
-      { project: project as any },
-      view,
-    );
+    new DiagnosticsPlugin({ project: project as any }, view);
 
+    project.fire({ diagnostics: diags });
     await waitFor(() => view.dispatch.mock.calls.length > 0);
     expect(view.dispatch).toHaveBeenCalled();
   });
@@ -105,16 +118,9 @@ describe("CompilerLintPlugin", () => {
   it("reacts to externally-triggered compile events", async () => {
     const project = mockProject();
     const view = mockView("abc");
-    new CompilerLintPlugin(
-      { project: project as any },
-      view,
-    );
+    new DiagnosticsPlugin({ project: project as any }, view);
 
-    // Flush the initial compile kicked off by the plugin.
-    await waitFor(() => view.dispatch.mock.calls.length > 0);
     const before = view.dispatch.mock.calls.length;
-
-    // Simulate a compile event that did not originate from this plugin.
     project.fire({
       diagnostics: [
         {

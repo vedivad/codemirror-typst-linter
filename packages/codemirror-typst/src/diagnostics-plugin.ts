@@ -1,46 +1,37 @@
 import { setDiagnostics } from "@codemirror/lint";
-import type { EditorView, ViewUpdate } from "@codemirror/view";
+import { type Extension } from "@codemirror/state";
+import { type EditorView, ViewPlugin } from "@codemirror/view";
 import type { CompileResult, TypstProject } from "@vedivad/typst-web-service";
 import { toCMDiagnostic } from "./diagnostics.js";
 import { typstFilePath } from "./facets.js";
-import { type BasePluginOptions, PluginDriver } from "./plugin-driver.js";
 
-export interface CompilerLintPluginOptions extends BasePluginOptions {
+export interface DiagnosticsPluginOptions {
   project: TypstProject;
 }
 
-export class CompilerLintPlugin {
-  private readonly driver: PluginDriver;
+/**
+ * Subscribes to `project.onCompile` and dispatches CodeMirror diagnostics for
+ * the current file (as read from the `typstFilePath` facet). Does not push
+ * content into the project or trigger compiles — pair with `CompileSyncPlugin`
+ * or drive compiles yourself.
+ */
+export class DiagnosticsPlugin {
   private readonly unsubscribe: () => void;
   private view: EditorView;
 
-  constructor(
-    private readonly options: CompilerLintPluginOptions,
-    view: EditorView,
-  ) {
+  constructor(options: DiagnosticsPluginOptions, view: EditorView) {
     this.view = view;
-    this.driver = new PluginDriver(view, options, { run: (v) => this.run(v) });
     this.unsubscribe = options.project.onCompile((result) =>
       this.applyDiagnostics(result),
     );
-    this.driver.start(view);
   }
 
-  update(update: ViewUpdate): void {
+  update(update: { view: EditorView }): void {
     this.view = update.view;
-    this.driver.update(update);
   }
 
   destroy(): void {
     this.unsubscribe();
-    this.driver.dispose();
-  }
-
-  private async run(view: EditorView): Promise<void> {
-    const source = view.state.doc.toString();
-    const path = view.state.facet(typstFilePath);
-    await this.options.project.setText(path, source);
-    await this.options.project.compile();
   }
 
   private applyDiagnostics(result: CompileResult): void {
@@ -55,4 +46,11 @@ export class CompilerLintPlugin {
       // View may already be replaced/destroyed.
     }
   }
+}
+
+/** CodeMirror extension that renders compile diagnostics for the active file. */
+export function createTypstDiagnostics(
+  options: DiagnosticsPluginOptions,
+): Extension {
+  return ViewPlugin.define((view) => new DiagnosticsPlugin(options, view), {});
 }
