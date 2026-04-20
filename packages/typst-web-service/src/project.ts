@@ -150,10 +150,7 @@ export class TypstProject {
   }
 
   /** Add or overwrite a binary file. Compiler-only. */
-  setBinary(
-    path: Path,
-    content: ArrayBuffer | ArrayBufferView,
-  ): Promise<void> {
+  setBinary(path: Path, content: ArrayBuffer | ArrayBufferView): Promise<void> {
     return this.compiler.setBinary(normalizePath(path), content);
   }
 
@@ -289,11 +286,7 @@ export class TypstProject {
   }
 
   /** Request hover info at the given position. Throws when no analyzer is attached. */
-  hover(
-    path: Path,
-    line: number,
-    character: number,
-  ): Promise<LspHover | null> {
+  hover(path: Path, line: number, character: number): Promise<LspHover | null> {
     return this.requireAnalyzer("hover").hover(
       pathToAnalyzerUri(normalizePath(path), this.analyzerUriRoot),
       line,

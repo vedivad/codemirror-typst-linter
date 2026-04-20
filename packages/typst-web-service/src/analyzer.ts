@@ -31,11 +31,7 @@ interface AnalyzerWorkerAPI {
     line: number,
     character: number,
   ): Promise<LspCompletionResponse>;
-  hover(
-    uri: string,
-    line: number,
-    character: number,
-  ): Promise<LspHover | null>;
+  hover(uri: string, line: number, character: number): Promise<LspHover | null>;
   destroy(): void;
 }
 
