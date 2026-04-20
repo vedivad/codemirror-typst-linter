@@ -18,6 +18,8 @@ npm install @vedivad/codemirror-typst
 
 ## Minimal editor
 
+Syntax highlighting, diagnostics, and compilation — no URLs or config.
+
 ```ts
 import { EditorView, basicSetup } from "codemirror";
 import { EditorState } from "@codemirror/state";
@@ -46,14 +48,16 @@ new EditorView({
 
 ## Full-featured editor
 
+Adds live SVG preview, autocompletion/hover, and format on save.
+
 ```ts
 import {
   createTypstExtensions,
-  TypstCompiler,
-  TypstRenderer,
-  TypstFormatter,
   TypstAnalyzer,
+  TypstCompiler,
+  TypstFormatter,
   TypstProject,
+  TypstRenderer,
 } from "@vedivad/codemirror-typst";
 import tinymistWasmUrl from "tinymist-web/pkg/tinymist_bg.wasm?url";
 
@@ -66,14 +70,15 @@ const [compiler, renderer, formatter, analyzer] = await Promise.all([
 
 const project = new TypstProject({ compiler, analyzer });
 
+project.onCompile(async (result) => {
+  if (result.vector) {
+    const svg = await renderer.renderSvg(result.vector);
+    document.querySelector("#preview")!.innerHTML = svg;
+  }
+});
+
 const typstExtensions = await createTypstExtensions({
   project,
-  onCompile: async (result) => {
-    if (result.vector) {
-      const svg = await renderer.renderSvg(result.vector);
-      document.querySelector("#preview")!.innerHTML = svg;
-    }
-  },
   debounceDelay: 300,
   throttleDelay: 2000,
   formatter: { instance: formatter, formatOnSave: true },
@@ -83,20 +88,16 @@ const typstExtensions = await createTypstExtensions({
 
 ## Multi-file editor
 
-For multi-file projects, attach the `typstFilePath` facet per-editor so each
-`EditorState` carries its own path. Switching tabs with
-`view.setState(states[path])` then propagates automatically:
+Attach the `typstFilePath` facet per-editor so each `EditorState` carries its own path. Switching tabs with `view.setState(states[path])` propagates the new path automatically — no external closure or `activeFile` variable required.
 
 ```ts
 import { typstFilePath } from "@vedivad/codemirror-typst";
 
-const files: Record<string, string> = {
+const project = new TypstProject({ compiler, analyzer });
+await project.setMany({
   "/main.typ": "...",
   "/template.typ": "...",
-};
-
-const project = new TypstProject({ compiler, analyzer });
-await project.setMany(files);
+});
 
 const typstExtensions = await createTypstExtensions({ project });
 const shared = [basicSetup, ...typstExtensions];
@@ -114,17 +115,26 @@ const states = Object.fromEntries(
 
 ## Compile timing
 
+`createTypstExtensions` watches the editor and triggers `project.compile()` on doc or path changes.
+
 ```ts
 debounceDelay: 300,  // wait 300ms after typing stops
 throttleDelay: 2000, // force a compile at least every 2s during continuous typing
 ```
 
+| Option          | Default  | Behavior                                                                                                      |
+| --------------- | -------- | ------------------------------------------------------------------------------------------------------------- |
+| `debounceDelay` | `0`      | Debounce — resets on every keystroke, fires once typing pauses. `0` means compile immediately on each change. |
+| `throttleDelay` | disabled | Throttle — forces a compile during continuous typing. Only effective when `debounceDelay > 0`.                |
+
 ## LSP analysis
 
-The analyzer requires a URL to `tinymist_bg.wasm` from the `tinymist-web` package:
+`TypstAnalyzer` runs a [tinymist](https://github.com/Myriad-Dreamin/tinymist) language server in a Web Worker. The `wasmUrl` option must point to the `tinymist_bg.wasm` binary from `tinymist-web` (installed automatically as a transitive dependency).
 
 - **Vite**: `import wasmUrl from "tinymist-web/pkg/tinymist_bg.wasm?url"`
 - **Static server**: copy `node_modules/tinymist-web/pkg/tinymist_bg.wasm` to your public directory
+
+Diagnostics always come from `TypstCompiler` after each compile. `TypstAnalyzer` powers autocompletion and hover only.
 
 ## Format on save
 
@@ -140,16 +150,30 @@ formatter: {
 }
 ```
 
-## Diagnostics modes
+## Granular plugins
 
-- Diagnostics are always pulled from `TypstCompiler` after each compile.
-- `TypstAnalyzer` is used for editor intelligence only (autocompletion and hover).
+`createTypstExtensions` composes two view plugins. Use them directly for custom setups:
+
+- **`createTypstCompileSync({ project, debounceDelay?, throttleDelay? })`** — mirrors the editor's content into the project's VFS and triggers `project.compile()` on changes. Use on its own if you render diagnostics yourself.
+- **`createTypstDiagnostics({ project })`** — subscribes to `project.onCompile` and dispatches diagnostics for the active file. Use on its own if you drive compiles outside the editor (e.g. a "Compile" button).
+
+```ts
+import {
+  createTypstCompileSync,
+  createTypstDiagnostics,
+  typstFilePath,
+} from "@vedivad/codemirror-typst";
+
+const extensions = [
+  createTypstCompileSync({ project, debounceDelay: 300 }),
+  createTypstDiagnostics({ project }),
+  typstFilePath.of("/main.typ"),
+];
+```
 
 ## Styling hover tooltips
 
-Hover content is rendered with stable CSS class names, so you can style it from your app stylesheet.
-
-By default, the plugin only sets hover scroll behavior inline (`max-height` + `overflow`) and leaves visual theming to your CSS.
+Hover content uses stable CSS class names, so you can theme it from your app stylesheet. The plugin only sets scroll behavior inline (`max-height` + `overflow`) and leaves visual theming to CSS.
 
 Useful selectors:
 
@@ -164,7 +188,7 @@ Useful selectors:
 - `.cm-typst-hover-section`
 - `.cm-typst-hover-pre`
 
-You can also control header element order with CSS (for example via `order` on `.cm-typst-hover-summary`, `.cm-typst-hover-signature`, and `.cm-typst-hover-header-actions`).
+Header element order is controllable via CSS `order` on `.cm-typst-hover-summary`, `.cm-typst-hover-signature`, and `.cm-typst-hover-header-actions`.
 
 ## License
 
