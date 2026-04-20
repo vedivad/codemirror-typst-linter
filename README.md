@@ -295,7 +295,10 @@ Both options control compile frequency for diagnostics and preview updates.
 just dev
 ```
 
-The demo at `demo/` includes a tabbed multi-file editor, live SVG preview, compile diagnostics panel, tinymist completion/hover, PDF export, code formatting (Shift+Alt+F), and format on save (Ctrl+S).
+The demo at `demo/` ships two pages:
+
+- `/` — full-featured: tabbed multi-file editor, live SVG preview, compile diagnostics panel, tinymist completion/hover, PDF export, code formatting (Shift+Alt+F), and format on save (Ctrl+S).
+- `/minimal.html` — single file, compile + preview only. Matches the [Minimal editor](#minimal-editor) quick-start.
 
 ## License
 

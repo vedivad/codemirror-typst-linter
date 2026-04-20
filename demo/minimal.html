@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>codemirror-typst demo</title>
+    <title>codemirror-typst — minimal demo</title>
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
@@ -11,32 +11,23 @@
       <header>
         <div class="header-row">
           <div>
-            <h1>codemirror-typst</h1>
+            <h1>codemirror-typst — minimal</h1>
             <p>
-              Typst diagnostics with incremental compilation and @preview/
-              package support.
-              <a href="/minimal.html">→ minimal demo</a>
+              Single file, compile + preview. No analyzer, formatter, or PDF.
+              <a href="/">→ full demo</a>
             </p>
           </div>
-          <button type="button" id="export-pdf" class="export-btn">
-            Export PDF
-          </button>
         </div>
       </header>
       <div class="main">
         <div class="editor-pane">
-          <div class="tabs" id="tabs"></div>
           <div class="editor" id="editor"></div>
-          <aside class="diagnostics" id="diagnostics">
-            <h2>Diagnostics</h2>
-            <p class="empty">No issues found.</p>
-          </aside>
         </div>
         <div class="preview" id="preview">
           <div class="placeholder">Rendering…</div>
         </div>
       </div>
     </div>
-    <script type="module" src="/src/main.ts"></script>
+    <script type="module" src="/src/minimal.ts"></script>
   </body>
 </html>
