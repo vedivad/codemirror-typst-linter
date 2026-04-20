@@ -20,8 +20,9 @@ import { TypstCompiler, TypstRenderer } from "@vedivad/typst-web-service";
 const compiler = await TypstCompiler.create();
 const renderer = await TypstRenderer.create();
 
-// Single file
-const result = await compiler.compile("= Hello, Typst");
+// Populate the VFS, then compile
+await compiler.setText("/main.typ", "= Hello, Typst");
+const result = await compiler.compile();
 if (result.vector) {
   const svg = await renderer.renderSvg(result.vector);
   document.querySelector("#preview")!.innerHTML = svg;
@@ -31,13 +32,14 @@ if (result.vector) {
 // (path, start position, end position, message)
 
 // Multi-file
-const result = await compiler.compile({
+await compiler.setMany({
   "/main.typ": '#import "template.typ": greet\n#greet("World")',
   "/template.typ": "#let greet(name) = [Hello, #name!]",
 });
+const result = await compiler.compile();
 
-// PDF export
-const pdf = await compiler.compilePdf("= Hello, Typst");
+// PDF export — operates on the same VFS state
+const pdf = await compiler.compilePdf();
 const blob = new Blob([pdf.slice()], { type: "application/pdf" });
 
 compiler.destroy();

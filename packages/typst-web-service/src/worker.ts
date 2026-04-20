@@ -46,15 +46,9 @@ class CompilerWorker {
   }
 
   async compile(
-    files?: Record<string, string>,
     entry?: string,
   ): Promise<{ diagnostics: DiagnosticMessage[]; vector?: Uint8Array }> {
     if (!this.compiler) throw new Error("Compiler not initialized");
-    if (files) {
-      for (const [path, source] of Object.entries(files)) {
-        this.compiler.addSource(path, source);
-      }
-    }
     const result = await this.compiler.compile({
       mainFilePath: entry ?? MAIN_FILE,
       diagnostics: "full",
@@ -91,16 +85,8 @@ class CompilerWorker {
     return { diagnostics };
   }
 
-  async compilePdf(
-    files?: Record<string, string>,
-    entry?: string,
-  ): Promise<Uint8Array> {
+  async compilePdf(entry?: string): Promise<Uint8Array> {
     if (!this.compiler) throw new Error("Compiler not initialized");
-    if (files) {
-      for (const [path, source] of Object.entries(files)) {
-        this.compiler.addSource(path, source);
-      }
-    }
     const result = await this.compiler.compile({
       mainFilePath: entry ?? MAIN_FILE,
       format: CompileFormatEnum.pdf,

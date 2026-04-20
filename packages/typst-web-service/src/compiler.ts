@@ -5,13 +5,9 @@ import type { DiagnosticMessage } from "./types.js";
 interface CompilerWorkerAPI {
   init(wasmUrl: string, fontUrls: string[], packages: boolean): Promise<void>;
   compile(
-    files?: Record<string, string>,
     entry?: string,
   ): Promise<{ diagnostics: DiagnosticMessage[]; vector?: Uint8Array }>;
-  compilePdf(
-    files?: Record<string, string>,
-    entry?: string,
-  ): Promise<Uint8Array>;
+  compilePdf(entry?: string): Promise<Uint8Array>;
   mapShadow(path: string, content: Uint8Array): void;
   mapShadowMany(files: Record<string, Uint8Array>): void;
   unmapShadow(path: string): void;
@@ -55,18 +51,6 @@ const DEFAULT_FONTS = [
 const DEFAULT_WASM_URL =
   "https://cdn.jsdelivr.net/npm/@myriaddreamin/typst-ts-web-compiler@0.7.0-rc2/pkg/typst_ts_web_compiler_bg.wasm";
 
-const DEFAULT_ENTRY = "/main.typ";
-
-function toFiles(
-  source?: string | Record<string, string>,
-  entry?: string,
-): Record<string, string> | undefined {
-  if (source === undefined) return undefined;
-  return typeof source === "string"
-    ? { [entry ?? DEFAULT_ENTRY]: source }
-    : source;
-}
-
 /**
  * Manages a Typst compiler worker. Create one instance and share it across
  * all extensions (linter, autocomplete, preview, etc.).
@@ -105,29 +89,21 @@ export class TypstCompiler {
   }
 
   /**
-   * Compile. Pass a source string (written to the entry path) or a map of
-   * files to register before compiling; omit to compile whatever is currently
-   * in the VFS (populated via setText/setBinary/setJson/setMany).
-   * Defaults to compiling "/main.typ"; override with `entry`.
+   * Compile whatever is currently in the VFS (populated via
+   * setText/setBinary/setJson/setMany). Defaults to compiling "/main.typ";
+   * override with `entry`.
    */
-  async compile(
-    source?: string | Record<string, string>,
-    entry?: string,
-  ): Promise<CompileResult> {
-    return this.proxy.compile(toFiles(source, entry), entry);
+  compile(entry?: string): Promise<CompileResult> {
+    return this.proxy.compile(entry);
   }
 
   /**
-   * Compile to PDF. Pass a source string (written to the entry path) or a map
-   * of files to register before compiling; omit to compile whatever is
-   * currently in the VFS (populated via setText/setBinary/setJson/setMany).
-   * Defaults to compiling "/main.typ"; override with `entry`.
+   * Compile to PDF. Operates on whatever is currently in the VFS (populated
+   * via setText/setBinary/setJson/setMany). Defaults to compiling "/main.typ";
+   * override with `entry`.
    */
-  compilePdf(
-    source?: string | Record<string, string>,
-    entry?: string,
-  ): Promise<Uint8Array> {
-    return this.proxy.compilePdf(toFiles(source, entry), entry);
+  compilePdf(entry?: string): Promise<Uint8Array> {
+    return this.proxy.compilePdf(entry);
   }
 
   /** Add or overwrite a text file in the virtual compiler filesystem. */

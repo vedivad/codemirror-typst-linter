@@ -221,7 +221,7 @@ export class TypstProject {
     const version = ++this.compileVersion;
     let result: CompileResult;
     try {
-      result = await this.compiler.compile(undefined, this._entry);
+      result = await this.compiler.compile(this._entry);
     } catch (err) {
       result = errorAsCompileResult(err, this._entry);
     }
@@ -240,7 +240,7 @@ export class TypstProject {
 
   /** Compile the current VFS state to PDF using the sticky entry. */
   compilePdf(): Promise<Uint8Array> {
-    return this.compiler.compilePdf(undefined, this._entry);
+    return this.compiler.compilePdf(this._entry);
   }
 
   private requireAnalyzer(operation: string): TypstAnalyzer {
