@@ -1,7 +1,13 @@
-import type { ChangeSpec, Extension } from "@codemirror/state";
+import type { Extension } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
 import { keymap } from "@codemirror/view";
 import type { TypstFormatter } from "@vedivad/typst-web-service";
+
+export interface DiffChange {
+  from: number;
+  to: number;
+  insert: string;
+}
 
 export interface TypstFormatterOptions {
   /** TypstFormatter instance to use for formatting. */
@@ -38,7 +44,7 @@ function handleError(error: unknown, onError?: (error: Error) => void): void {
  * Returns ChangeSpec[] that only touch the differing region, preserving
  * cursor position and undo granularity for unchanged parts.
  */
-export function diffChanges(oldStr: string, newStr: string): ChangeSpec[] {
+export function diffChanges(oldStr: string, newStr: string): DiffChange[] {
   // Find common prefix
   let from = 0;
   const minLen = Math.min(oldStr.length, newStr.length);

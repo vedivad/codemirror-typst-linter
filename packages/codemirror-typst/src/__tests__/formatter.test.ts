@@ -65,7 +65,7 @@ describe("diffChanges", () => {
     const result =
       old.slice(0, changes[0].from) +
       changes[0].insert +
-      old.slice(changes[0].to as number);
+      old.slice(changes[0].to);
     expect(result).toBe(now);
   });
 
@@ -77,7 +77,7 @@ describe("diffChanges", () => {
     const result =
       old.slice(0, changes[0].from) +
       changes[0].insert +
-      old.slice(changes[0].to as number);
+      old.slice(changes[0].to);
     expect(result).toBe(now);
   });
 
@@ -103,7 +103,7 @@ describe("diffChanges", () => {
     const result =
       old.slice(0, changes[0].from) +
       changes[0].insert +
-      old.slice(changes[0].to as number);
+      old.slice(changes[0].to);
     expect(result).toBe(now);
   });
 
