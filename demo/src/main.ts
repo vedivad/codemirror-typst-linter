@@ -31,11 +31,9 @@ const [formatter, compiler, renderer, analyzer] = await Promise.all([
 const project = new TypstProject({ compiler, analyzer });
 await project.setMany(files);
 
-const filePaths = Object.keys(files);
-
 // --- Editor state ---
 
-let activeFile = filePaths[0];
+let activeFile = project.files[0];
 let activeView: EditorView | null = null;
 
 // --- Compile results → preview + diagnostics panel ---
@@ -55,25 +53,25 @@ async function addFile(rawName: string) {
   if (!path) return;
   if (!path.endsWith(".typ")) path += ".typ";
   if (!path.startsWith("/")) path = "/" + path;
-  if (filePaths.includes(path)) {
+  if (project.files.includes(path)) {
     alert(`"${path}" already exists.`);
     return;
   }
 
   await project.setText(path, "");
   states[path] = EditorState.create({ doc: "", extensions: sharedExtensions });
-  filePaths.push(path);
   switchTab(path); // path change triggers the plugin to compile
 }
 
 async function removeFile(path: string) {
-  if (filePaths.length <= 1) return; // must keep at least one file
-  const idx = filePaths.indexOf(path);
-  filePaths.splice(idx, 1);
+  const paths = project.files;
+  if (paths.length <= 1) return; // must keep at least one file
+  const idx = paths.indexOf(path);
   delete states[path];
   await project.remove(path);
   if (activeFile === path) {
-    switchTab(filePaths[Math.max(0, idx - 1)]);
+    const remaining = project.files;
+    switchTab(remaining[Math.max(0, idx - 1)]);
   } else {
     await project.compile();
     renderTabs();
@@ -122,7 +120,8 @@ function switchTab(path: string) {
 function renderTabs() {
   tabsEl.innerHTML = "";
 
-  for (const path of filePaths) {
+  const paths = project.files;
+  for (const path of paths) {
     const tabContainer = document.createElement("div");
     tabContainer.className = "tab-container";
 
@@ -132,7 +131,7 @@ function renderTabs() {
     tab.onclick = () => switchTab(path);
     tabContainer.appendChild(tab);
 
-    if (filePaths.length > 1) {
+    if (paths.length > 1) {
       const closeBtn = document.createElement("button");
       closeBtn.className = "tab-close";
       closeBtn.textContent = "×";

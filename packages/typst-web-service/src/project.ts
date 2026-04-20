@@ -78,6 +78,15 @@ export class TypstProject {
     return this.analyzer !== undefined;
   }
 
+  /**
+   * Snapshot of tracked text file paths, in insertion order. Updated by
+   * `setText`, `setMany`, `remove`, and `clear`. Returns a fresh array — mutate
+   * freely without affecting project state.
+   */
+  get files(): string[] {
+    return [...this.trackedTextPaths];
+  }
+
   /** Change the sticky entry file used by subsequent compile() calls. */
   setEntry(path: string): void {
     this._entry = normalizePath(path);
@@ -125,21 +134,19 @@ export class TypstProject {
     for (const [path, content] of Object.entries(files)) {
       normalized[normalizePath(path)] = content;
     }
+    const docs: Record<string, string> = {};
+    for (const [path, content] of Object.entries(normalized)) {
+      if (typeof content !== "string") continue;
+      this.trackedTextPaths.add(path);
+      if (this.lastSyncedContent.get(path) === content) continue;
+      this.lastSyncedContent.set(path, content);
+      docs[this.toUri(path)] = content;
+    }
     const compilerOp = this.compiler.setMany(normalized);
-    const analyzerOp = (async () => {
-      if (!this.analyzer) return;
-      const docs: Record<string, string> = {};
-      for (const [path, content] of Object.entries(normalized)) {
-        if (typeof content !== "string") continue;
-        this.trackedTextPaths.add(path);
-        if (this.lastSyncedContent.get(path) === content) continue;
-        this.lastSyncedContent.set(path, content);
-        docs[this.toUri(path)] = content;
-      }
-      if (Object.keys(docs).length > 0) {
-        await this.analyzer.didChangeMany(docs);
-      }
-    })();
+    const analyzerOp =
+      this.analyzer && Object.keys(docs).length > 0
+        ? this.analyzer.didChangeMany(docs)
+        : Promise.resolve();
     await Promise.all([compilerOp, analyzerOp]);
   }
 
