@@ -90,9 +90,12 @@ const typstExtensions = await createTypstExtensions({
 const sharedExtensions = [basicSetup, oneDark, ...typstExtensions];
 
 const states: Record<string, EditorState> = Object.fromEntries(
-  Object.entries(files).map(([path, content]) => [
+  project.files.map((path) => [
     path,
-    EditorState.create({ doc: content, extensions: sharedExtensions }),
+    EditorState.create({
+      doc: project.getText(path) ?? "",
+      extensions: sharedExtensions,
+    }),
   ]),
 );
 

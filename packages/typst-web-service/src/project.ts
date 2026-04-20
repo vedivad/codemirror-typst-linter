@@ -98,6 +98,15 @@ export class TypstProject {
     return [...this.trackedTextPaths];
   }
 
+  /**
+   * Current text content for a tracked file, or `undefined` if the path was
+   * never written via `setText`/`setMany` (or was removed). Read-through to the
+   * project's sync cache — lets consumers avoid shadowing the VFS themselves.
+   */
+  getText(path: string): string | undefined {
+    return this.lastSyncedContent.get(normalizePath(path));
+  }
+
   /** Change the sticky entry file used by subsequent compile() calls. */
   setEntry(path: string): void {
     this._entry = normalizePath(path);
