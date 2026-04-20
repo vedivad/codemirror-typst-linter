@@ -13,11 +13,12 @@ export interface TypstProjectOptions {
   /** Default entry file path. Default: "/main.typ". */
   entry?: string;
   /**
-   * Project root used to build stable analyzer URIs. Default: "/project".
-   * URIs are formed as `untitled:<root-without-leading-slash><path>` — so
-   * `/main.typ` becomes `untitled:project/main.typ`.
+   * Prefix used to build the `untitled:` URIs handed to the analyzer.
+   * Default: "/project". A path of `/main.typ` becomes
+   * `untitled:project/main.typ`. Only affects URI construction — the compiler
+   * and project VFS use the raw paths unchanged.
    */
-  rootPath?: string;
+  analyzerUriRoot?: string;
 }
 
 const DEFAULT_ENTRY = "/main.typ";
@@ -54,7 +55,7 @@ function errorAsCompileResult(err: unknown, path: string): CompileResult {
 export class TypstProject {
   private readonly compiler: TypstCompiler;
   private readonly analyzer?: TypstAnalyzer;
-  private readonly rootPath: string;
+  private readonly analyzerUriRoot: string;
   private readonly trackedTextPaths = new Set<string>();
   /** Last content written via setText/setMany, per path. Used to skip redundant writes to compiler + analyzer. */
   private readonly lastSyncedContent = new Map<string, string>();
@@ -66,13 +67,19 @@ export class TypstProject {
   constructor(options: TypstProjectOptions) {
     this.compiler = options.compiler;
     this.analyzer = options.analyzer;
-    this.rootPath = normalizeRoot(options.rootPath ?? DEFAULT_ROOT);
+    this.analyzerUriRoot = normalizeRoot(
+      options.analyzerUriRoot ?? DEFAULT_ROOT,
+    );
     this._entry = normalizePath(options.entry ?? DEFAULT_ENTRY);
   }
 
-  /** Current entry file path. */
+  /** Current entry file path. Assign to change the sticky entry used by subsequent `compile()` calls. */
   get entry(): string {
     return this._entry;
+  }
+
+  set entry(path: string) {
+    this._entry = normalizePath(path);
   }
 
   /** Whether an analyzer is attached. */
@@ -105,11 +112,6 @@ export class TypstProject {
    */
   getText(path: string): string | undefined {
     return this.lastSyncedContent.get(normalizePath(path));
-  }
-
-  /** Change the sticky entry file used by subsequent compile() calls. */
-  setEntry(path: string): void {
-    this._entry = normalizePath(path);
   }
 
   /**
@@ -286,7 +288,7 @@ export class TypstProject {
   }
 
   private toUri(path: string): string {
-    const root = this.rootPath.replace(/^\//, "");
+    const root = this.analyzerUriRoot.replace(/^\//, "");
     return `untitled:${root}${normalizePath(path)}`;
   }
 }
