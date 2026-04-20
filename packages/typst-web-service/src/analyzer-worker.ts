@@ -1,5 +1,6 @@
 import * as Comlink from "comlink";
 import init, { TinymistLanguageServer } from "tinymist-web";
+import type { LspCompletionResponse, LspHover } from "./analyzer-types.js";
 
 class AnalyzerWorker {
   private server: TinymistLanguageServer | null = null;
@@ -123,7 +124,7 @@ class AnalyzerWorker {
     uri: string,
     line: number,
     character: number,
-  ): Promise<unknown> {
+  ): Promise<LspCompletionResponse> {
     const result = this.ensureServer().on_request("textDocument/completion", {
       textDocument: { uri },
       position: { line, character },
@@ -133,10 +134,14 @@ class AnalyzerWorker {
         ? await result
         : result;
     this.flushEvents();
-    return resolved ?? null;
+    return (resolved ?? null) as LspCompletionResponse;
   }
 
-  async hover(uri: string, line: number, character: number): Promise<unknown> {
+  async hover(
+    uri: string,
+    line: number,
+    character: number,
+  ): Promise<LspHover | null> {
     const result = this.ensureServer().on_request("textDocument/hover", {
       textDocument: { uri },
       position: { line, character },
@@ -146,7 +151,7 @@ class AnalyzerWorker {
         ? await result
         : result;
     this.flushEvents();
-    return resolved ?? null;
+    return (resolved ?? null) as LspHover | null;
   }
 
   destroy(): void {

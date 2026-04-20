@@ -1,4 +1,5 @@
 import type { TypstAnalyzer } from "./analyzer.js";
+import type { LspCompletionResponse, LspHover } from "./analyzer-types.js";
 import type { CompileResult, TypstCompiler } from "./compiler.js";
 import { normalizePath, normalizeRoot } from "./uri.js";
 
@@ -230,7 +231,11 @@ export class TypstProject {
   }
 
   /** Request completions at the given position. Throws when no analyzer is attached. */
-  completion(path: string, line: number, character: number): Promise<unknown> {
+  completion(
+    path: string,
+    line: number,
+    character: number,
+  ): Promise<LspCompletionResponse> {
     return this.requireAnalyzer("completion").completion(
       this.toUri(normalizePath(path)),
       line,
@@ -239,7 +244,11 @@ export class TypstProject {
   }
 
   /** Request hover info at the given position. Throws when no analyzer is attached. */
-  hover(path: string, line: number, character: number): Promise<unknown> {
+  hover(
+    path: string,
+    line: number,
+    character: number,
+  ): Promise<LspHover | null> {
     return this.requireAnalyzer("hover").hover(
       this.toUri(normalizePath(path)),
       line,

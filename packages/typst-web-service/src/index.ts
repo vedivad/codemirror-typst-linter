@@ -1,6 +1,16 @@
 export type { TypstAnalyzerOptions } from "./analyzer.js";
 export { TypstAnalyzer } from "./analyzer.js";
-export type { LspDiagnostic } from "./analyzer-types.js";
+export type {
+  LspCompletionItem,
+  LspCompletionList,
+  LspCompletionResponse,
+  LspDiagnostic,
+  LspHover,
+  LspHoverContents,
+  LspMarkupContent,
+  LspPosition,
+  LspRange,
+} from "./analyzer-types.js";
 export { normalizePath, normalizeRoot, normalizeUntitledUri } from "./uri.js";
 export type { CompileResult, TypstCompilerOptions } from "./compiler.js";
 export { TypstCompiler } from "./compiler.js";

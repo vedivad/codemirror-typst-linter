@@ -3,7 +3,12 @@ import type {
   CompletionContext,
   CompletionResult,
 } from "@codemirror/autocomplete";
-import type { TypstProject } from "@vedivad/typst-web-service";
+import type {
+  LspCompletionItem,
+  LspCompletionResponse,
+  LspMarkupContent,
+  TypstProject,
+} from "@vedivad/typst-web-service";
 import { toPathGetter } from "./utils.js";
 
 export interface TypstCompletionOptions {
@@ -41,30 +46,8 @@ const LSP_KIND_TO_TYPE: Record<number, string> = {
   25: "type", // TypeParameter
 };
 
-interface LspCompletionItem {
-  label: string;
-  kind?: number;
-  detail?: string;
-  documentation?: string | { kind: string; value: string };
-  insertText?: string;
-  filterText?: string;
-  sortText?: string;
-  textEdit?: {
-    range: {
-      start: { line: number; character: number };
-      end: { line: number; character: number };
-    };
-    newText: string;
-  };
-}
-
-interface LspCompletionList {
-  isIncomplete: boolean;
-  items: LspCompletionItem[];
-}
-
 function getDocString(
-  doc: string | { kind: string; value: string } | undefined,
+  doc: string | LspMarkupContent | undefined,
 ): string | undefined {
   if (!doc) return undefined;
   if (typeof doc === "string") return doc;
@@ -73,11 +56,11 @@ function getDocString(
 
 function lspCompletionToCM(
   ctx: CompletionContext,
-  result: unknown,
+  result: LspCompletionResponse,
 ): CompletionResult | null {
-  const items: LspCompletionItem[] = Array.isArray(result)
+  const items: LspCompletionItem[] | undefined = Array.isArray(result)
     ? result
-    : (result as LspCompletionList)?.items;
+    : (result?.items ?? undefined);
 
   if (!items?.length) return null;
 

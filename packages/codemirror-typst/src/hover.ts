@@ -1,7 +1,11 @@
 import { forEachDiagnostic } from "@codemirror/lint";
 import type { EditorState, Extension } from "@codemirror/state";
 import { hoverTooltip, type Tooltip } from "@codemirror/view";
-import type { TypstProject } from "@vedivad/typst-web-service";
+import type {
+  LspHover,
+  LspHoverContents,
+  TypstProject,
+} from "@vedivad/typst-web-service";
 import { renderHoverMarkdown, type CodeHighlighter } from "./hover-markdown.js";
 import { toPathGetter } from "./utils.js";
 
@@ -13,18 +17,7 @@ export interface TypstHoverOptions {
   highlightCode?: CodeHighlighter;
 }
 
-interface LspHoverResult {
-  contents:
-    | string
-    | { kind: string; value: string }
-    | (string | { language: string; value: string })[];
-  range?: {
-    start: { line: number; character: number };
-    end: { line: number; character: number };
-  };
-}
-
-function extractHoverText(contents: LspHoverResult["contents"]): string {
+function extractHoverText(contents: LspHoverContents): string {
   if (typeof contents === "string") return contents;
   if (Array.isArray(contents)) {
     return contents
@@ -37,10 +30,9 @@ function extractHoverText(contents: LspHoverResult["contents"]): string {
 function lspHoverToCM(
   state: EditorState,
   pos: number,
-  result: unknown,
+  hover: LspHover | null,
   highlightCode?: CodeHighlighter,
 ): Tooltip | null {
-  const hover = result as LspHoverResult | null;
   if (!hover?.contents) return null;
 
   const text = extractHoverText(hover.contents);

@@ -81,9 +81,6 @@ export class TypstCompiler {
   private readonly worker: Worker;
   private readonly encoder = new TextEncoder();
 
-  /** The most recent vector artifact from a compile, if any. */
-  lastVector?: Uint8Array;
-
   private constructor(
     worker: Worker,
     proxy: Comlink.Remote<CompilerWorkerAPI>,
@@ -117,9 +114,7 @@ export class TypstCompiler {
     source?: string | Record<string, string>,
     entry?: string,
   ): Promise<CompileResult> {
-    const result = await this.proxy.compile(toFiles(source, entry), entry);
-    if (result.vector) this.lastVector = result.vector;
-    return result;
+    return this.proxy.compile(toFiles(source, entry), entry);
   }
 
   /**

@@ -1,4 +1,5 @@
 import * as Comlink from "comlink";
+import type { LspCompletionResponse, LspHover } from "./analyzer-types.js";
 import { createAnalyzerWorker } from "./rpc.js";
 
 export interface TypstAnalyzerOptions {
@@ -25,8 +26,16 @@ interface AnalyzerWorkerAPI {
     changes: Array<{ uri: string; version: number; content: string }>,
   ): Promise<void>;
   didCloseMany(uris: string[]): Promise<void>;
-  completion(uri: string, line: number, character: number): Promise<unknown>;
-  hover(uri: string, line: number, character: number): Promise<unknown>;
+  completion(
+    uri: string,
+    line: number,
+    character: number,
+  ): Promise<LspCompletionResponse>;
+  hover(
+    uri: string,
+    line: number,
+    character: number,
+  ): Promise<LspHover | null>;
   destroy(): void;
 }
 
@@ -122,11 +131,15 @@ export class TypstAnalyzer {
     uri: string,
     line: number,
     character: number,
-  ): Promise<unknown> {
+  ): Promise<LspCompletionResponse> {
     return this.proxy.completion(uri, line, character);
   }
 
-  async hover(uri: string, line: number, character: number): Promise<unknown> {
+  async hover(
+    uri: string,
+    line: number,
+    character: number,
+  ): Promise<LspHover | null> {
     return this.proxy.hover(uri, line, character);
   }
 

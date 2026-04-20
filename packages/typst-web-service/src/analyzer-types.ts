@@ -1,10 +1,64 @@
+/** LSP Position (0-based line and character). */
+export interface LspPosition {
+  line: number;
+  character: number;
+}
+
+/** LSP Range. */
+export interface LspRange {
+  start: LspPosition;
+  end: LspPosition;
+}
+
 /** LSP Diagnostic as returned by tinymist. */
 export interface LspDiagnostic {
-  range: {
-    start: { line: number; character: number };
-    end: { line: number; character: number };
-  };
+  range: LspRange;
   severity?: number; // 1=Error, 2=Warning, 3=Info, 4=Hint
   message: string;
   source?: string;
+}
+
+/** LSP MarkupContent (markdown or plaintext). */
+export interface LspMarkupContent {
+  kind: "markdown" | "plaintext";
+  value: string;
+}
+
+/** LSP CompletionItem (subset actually populated by tinymist). */
+export interface LspCompletionItem {
+  label: string;
+  kind?: number;
+  detail?: string;
+  documentation?: string | LspMarkupContent;
+  insertText?: string;
+  filterText?: string;
+  sortText?: string;
+  textEdit?: {
+    range: LspRange;
+    newText: string;
+  };
+}
+
+/** LSP CompletionList. */
+export interface LspCompletionList {
+  isIncomplete: boolean;
+  items: LspCompletionItem[];
+}
+
+/** Response shape for `textDocument/completion`. */
+export type LspCompletionResponse =
+  | LspCompletionList
+  | LspCompletionItem[]
+  | null;
+
+/** LSP Hover contents — legacy and current forms tinymist may emit. */
+export type LspHoverContents =
+  | string
+  | LspMarkupContent
+  | (string | { language: string; value: string })[];
+
+/** Response shape for `textDocument/hover`. */
+export interface LspHover {
+  contents: LspHoverContents;
+  range?: LspRange;
 }
