@@ -11,7 +11,12 @@ export type {
   LspPosition,
   LspRange,
 } from "./analyzer-types.js";
-export { normalizePath, normalizeRoot, normalizeUntitledUri } from "./uri.js";
+export type { AnalyzerUri, Path } from "./identifiers.js";
+export {
+  normalizePath,
+  normalizeRoot,
+  pathToAnalyzerUri,
+} from "./identifiers.js";
 export type { CompileResult, TypstCompilerOptions } from "./compiler.js";
 export { TypstCompiler } from "./compiler.js";
 export type { FormatConfig, FormatRangeResult } from "./formatter.js";

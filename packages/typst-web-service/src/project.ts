@@ -1,7 +1,12 @@
 import type { TypstAnalyzer } from "./analyzer.js";
 import type { LspCompletionResponse, LspHover } from "./analyzer-types.js";
 import type { CompileResult, TypstCompiler } from "./compiler.js";
-import { normalizePath, normalizeRoot } from "./uri.js";
+import {
+  normalizePath,
+  normalizeRoot,
+  type Path,
+  pathToAnalyzerUri,
+} from "./identifiers.js";
 
 export interface TypstProjectOptions {
   compiler: TypstCompiler;
@@ -56,13 +61,13 @@ export class TypstProject {
   private readonly compiler: TypstCompiler;
   private readonly analyzer?: TypstAnalyzer;
   private readonly analyzerUriRoot: string;
-  private readonly trackedTextPaths = new Set<string>();
+  private readonly trackedTextPaths = new Set<Path>();
   /** Last content written via setText/setMany, per path. Used to skip redundant writes to compiler + analyzer. */
-  private readonly lastSyncedContent = new Map<string, string>();
+  private readonly lastSyncedContent = new Map<Path, string>();
   private readonly compileListeners = new Set<CompileListener>();
   private compileVersion = 0;
   private _lastResult: CompileResult | undefined;
-  private _entry: string;
+  private _entry: Path;
 
   constructor(options: TypstProjectOptions) {
     this.compiler = options.compiler;
@@ -74,11 +79,11 @@ export class TypstProject {
   }
 
   /** Current entry file path. Assign to change the sticky entry used by subsequent `compile()` calls. */
-  get entry(): string {
+  get entry(): Path {
     return this._entry;
   }
 
-  set entry(path: string) {
+  set entry(path: Path) {
     this._entry = normalizePath(path);
   }
 
@@ -101,7 +106,7 @@ export class TypstProject {
    * `setText`, `setMany`, `remove`, and `clear`. Returns a fresh array — mutate
    * freely without affecting project state.
    */
-  get files(): string[] {
+  get files(): Path[] {
     return [...this.trackedTextPaths];
   }
 
@@ -110,7 +115,7 @@ export class TypstProject {
    * never written via `setText`/`setMany` (or was removed). Read-through to the
    * project's sync cache — lets consumers avoid shadowing the VFS themselves.
    */
-  getText(path: string): string | undefined {
+  getText(path: Path): string | undefined {
     return this.lastSyncedContent.get(normalizePath(path));
   }
 
@@ -119,14 +124,19 @@ export class TypstProject {
    * analyzer is attached, to the analyzer as a document change. Redundant
    * calls with unchanged content are skipped.
    */
-  async setText(path: string, content: string): Promise<void> {
+  async setText(path: Path, content: string): Promise<void> {
     const p = normalizePath(path);
     this.trackedTextPaths.add(p);
     if (this.lastSyncedContent.get(p) === content) return;
     this.lastSyncedContent.set(p, content);
     const ops: Array<Promise<void>> = [this.compiler.setText(p, content)];
     if (this.analyzer) {
-      ops.push(this.analyzer.didChange(this.toUri(p), content));
+      ops.push(
+        this.analyzer.didChange(
+          pathToAnalyzerUri(p, this.analyzerUriRoot),
+          content,
+        ),
+      );
     }
     await Promise.all(ops);
   }
@@ -135,13 +145,13 @@ export class TypstProject {
    * Add or overwrite a JSON file. Compiler-only — the analyzer does not track
    * data files.
    */
-  setJson(path: string, value: unknown): Promise<void> {
+  setJson(path: Path, value: unknown): Promise<void> {
     return this.compiler.setJson(normalizePath(path), value);
   }
 
   /** Add or overwrite a binary file. Compiler-only. */
   setBinary(
-    path: string,
+    path: Path,
     content: ArrayBuffer | ArrayBufferView,
   ): Promise<void> {
     return this.compiler.setBinary(normalizePath(path), content);
@@ -151,8 +161,8 @@ export class TypstProject {
    * Batch set multiple files. Strings route to both compiler and analyzer;
    * Uint8Array entries go to the compiler only.
    */
-  async setMany(files: Record<string, string | Uint8Array>): Promise<void> {
-    const normalized: Record<string, string | Uint8Array> = {};
+  async setMany(files: Record<Path, string | Uint8Array>): Promise<void> {
+    const normalized: Record<Path, string | Uint8Array> = {};
     for (const [path, content] of Object.entries(files)) {
       normalized[normalizePath(path)] = content;
     }
@@ -162,7 +172,7 @@ export class TypstProject {
       this.trackedTextPaths.add(path);
       if (this.lastSyncedContent.get(path) === content) continue;
       this.lastSyncedContent.set(path, content);
-      docs[this.toUri(path)] = content;
+      docs[pathToAnalyzerUri(path, this.analyzerUriRoot)] = content;
     }
     const compilerOp = this.compiler.setMany(normalized);
     const analyzerOp =
@@ -176,20 +186,24 @@ export class TypstProject {
    * Remove a file. Always removed from the compiler's VFS; also closed on the
    * analyzer when it was previously tracked as text.
    */
-  async remove(path: string): Promise<void> {
+  async remove(path: Path): Promise<void> {
     const p = normalizePath(path);
     const wasText = this.trackedTextPaths.delete(p);
     this.lastSyncedContent.delete(p);
     const ops: Array<Promise<void>> = [this.compiler.remove(p)];
     if (this.analyzer && wasText) {
-      ops.push(this.analyzer.didClose(this.toUri(p)));
+      ops.push(
+        this.analyzer.didClose(pathToAnalyzerUri(p, this.analyzerUriRoot)),
+      );
     }
     await Promise.all(ops);
   }
 
   /** Clear all files from both compiler VFS and analyzer document set. */
   async clear(): Promise<void> {
-    const uris = Array.from(this.trackedTextPaths, (p) => this.toUri(p));
+    const uris = Array.from(this.trackedTextPaths, (p) =>
+      pathToAnalyzerUri(p, this.analyzerUriRoot),
+    );
     this.trackedTextPaths.clear();
     this.lastSyncedContent.clear();
     const compilerOp = this.compiler.clear();
@@ -263,12 +277,12 @@ export class TypstProject {
 
   /** Request completions at the given position. Throws when no analyzer is attached. */
   completion(
-    path: string,
+    path: Path,
     line: number,
     character: number,
   ): Promise<LspCompletionResponse> {
     return this.requireAnalyzer("completion").completion(
-      this.toUri(normalizePath(path)),
+      pathToAnalyzerUri(normalizePath(path), this.analyzerUriRoot),
       line,
       character,
     );
@@ -276,19 +290,14 @@ export class TypstProject {
 
   /** Request hover info at the given position. Throws when no analyzer is attached. */
   hover(
-    path: string,
+    path: Path,
     line: number,
     character: number,
   ): Promise<LspHover | null> {
     return this.requireAnalyzer("hover").hover(
-      this.toUri(normalizePath(path)),
+      pathToAnalyzerUri(normalizePath(path), this.analyzerUriRoot),
       line,
       character,
     );
-  }
-
-  private toUri(path: string): string {
-    const root = this.analyzerUriRoot.replace(/^\//, "");
-    return `untitled:${root}${normalizePath(path)}`;
   }
 }
