@@ -60,6 +60,7 @@ export class TypstProject {
   private readonly lastSyncedContent = new Map<string, string>();
   private readonly compileListeners = new Set<CompileListener>();
   private compileVersion = 0;
+  private _lastResult: CompileResult | undefined;
   private _entry: string;
 
   constructor(options: TypstProjectOptions) {
@@ -77,6 +78,15 @@ export class TypstProject {
   /** Whether an analyzer is attached. */
   get hasAnalyzer(): boolean {
     return this.analyzer !== undefined;
+  }
+
+  /**
+   * Most recent compile result, or `undefined` before the first compile has
+   * settled. Useful for lazy-mounted UI that subscribes after boot and needs
+   * an initial value.
+   */
+  get lastResult(): CompileResult | undefined {
+    return this._lastResult;
   }
 
   /**
@@ -182,10 +192,19 @@ export class TypstProject {
   /**
    * Subscribe to compile results. Fires after every `compile()` whose result is
    * still current (stale results from out-of-order concurrent compiles are
-   * dropped). Returns an unsubscribe function.
+   * dropped). If a compile has already settled, the most recent result is
+   * delivered synchronously so late-mounted listeners aren't stuck blank until
+   * the next compile. Returns an unsubscribe function.
    */
   onCompile(listener: CompileListener): () => void {
     this.compileListeners.add(listener);
+    if (this._lastResult !== undefined) {
+      try {
+        listener(this._lastResult);
+      } catch (err) {
+        console.error("[typst] compile listener threw:", err);
+      }
+    }
     return () => {
       this.compileListeners.delete(listener);
     };
@@ -207,6 +226,7 @@ export class TypstProject {
       result = errorAsCompileResult(err, this._entry);
     }
     if (version === this.compileVersion) {
+      this._lastResult = result;
       for (const listener of this.compileListeners) {
         try {
           listener(result);
