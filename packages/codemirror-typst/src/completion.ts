@@ -9,12 +9,10 @@ import type {
   LspMarkupContent,
   TypstProject,
 } from "@vedivad/typst-web-service";
-import { toPathGetter } from "./utils.js";
+import { typstFilePath } from "./facets.js";
 
 export interface TypstCompletionOptions {
   project: TypstProject;
-  /** File path this editor represents. Default: () => "/main.typ" */
-  filePath?: () => string;
 }
 
 /** LSP CompletionItemKind → CM6 completion type */
@@ -108,13 +106,11 @@ function lspCompletionToCM(
 export function typstCompletionSource(
   options: TypstCompletionOptions,
 ): (ctx: CompletionContext) => Promise<CompletionResult | null> {
-  const getPath = toPathGetter(options.filePath);
-
   return async (ctx: CompletionContext): Promise<CompletionResult | null> => {
     // Only trigger on explicit activation or after typing a trigger character
     if (!ctx.explicit && !ctx.matchBefore(/[#\w.]/)) return null;
 
-    const path = getPath();
+    const path = ctx.state.facet(typstFilePath);
     const source = ctx.state.doc.toString();
 
     const line = ctx.state.doc.lineAt(ctx.pos);

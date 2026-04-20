@@ -87,11 +87,17 @@ const typstExtensions = await createTypstExtensions({
 
 ### Multi-file editor
 
-For multi-file projects, create one shared `TypstProject`, push files into it, and switch `filePath` across tabs:
+For multi-file projects, create one shared `TypstProject`, push files into it,
+and attach the `typstFilePath` facet on each tab's `EditorState`. Switching
+tabs with `view.setState(states[path])` propagates the new path automatically —
+no external closure or `activeFile` variable required.
 
 ```ts
+import { EditorState } from "@codemirror/state";
+import { basicSetup } from "codemirror";
 import {
   createTypstExtensions,
+  typstFilePath,
   TypstAnalyzer,
   TypstCompiler,
   TypstProject,
@@ -103,20 +109,27 @@ const [compiler, analyzer] = await Promise.all([
   TypstAnalyzer.create({ wasmUrl: tinymistWasmUrl }),
 ]);
 
-const files: Record<string, string> = {
+const project = new TypstProject({ compiler, analyzer });
+await project.setMany({
   "/main.typ": "...",
   "/template.typ": "...",
-};
+});
 
-let activeFile = "/main.typ";
-const project = new TypstProject({ compiler, analyzer });
-await project.setMany(files);
-
-const extensions = await createTypstExtensions({
+const typstExtensions = await createTypstExtensions({
   project,
-  filePath: () => activeFile,
   highlighting: { theme: "dark" },
 });
+const shared = [basicSetup, ...typstExtensions];
+
+const states = Object.fromEntries(
+  project.files.map((path) => [
+    path,
+    EditorState.create({
+      doc: project.getText(path) ?? "",
+      extensions: [...shared, typstFilePath.of(path)],
+    }),
+  ]),
+);
 ```
 
 ## Packages

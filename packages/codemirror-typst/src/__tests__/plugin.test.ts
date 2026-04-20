@@ -50,7 +50,7 @@ describe("CompilerLintPlugin", () => {
     const project = mockProject();
     const view = mockView("hello");
     new CompilerLintPlugin(
-      { project: project as any, filePath: () => "/main.typ" },
+      { project: project as any },
       view,
     );
 
@@ -63,7 +63,7 @@ describe("CompilerLintPlugin", () => {
     const project = mockProject();
     const view = mockView("x");
     const plugin = new CompilerLintPlugin(
-      { project: project as any, filePath: () => "/main.typ" },
+      { project: project as any },
       view,
     );
 
@@ -94,7 +94,7 @@ describe("CompilerLintPlugin", () => {
     const project = mockProject(diags);
     const view = mockView("abc");
     new CompilerLintPlugin(
-      { project: project as any, filePath: () => "/main.typ" },
+      { project: project as any },
       view,
     );
 
@@ -106,7 +106,7 @@ describe("CompilerLintPlugin", () => {
     const project = mockProject();
     const view = mockView("abc");
     new CompilerLintPlugin(
-      { project: project as any, filePath: () => "/main.typ" },
+      { project: project as any },
       view,
     );
 

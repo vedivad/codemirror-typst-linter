@@ -2,6 +2,7 @@ import { EditorState } from "@codemirror/state";
 import { oneDark } from "@codemirror/theme-one-dark";
 import {
   createTypstExtensions,
+  typstFilePath,
   TypstAnalyzer,
   TypstCompiler,
   TypstFormatter,
@@ -59,7 +60,10 @@ async function addFile(rawName: string) {
   }
 
   await project.setText(path, "");
-  states[path] = EditorState.create({ doc: "", extensions: sharedExtensions });
+  states[path] = EditorState.create({
+    doc: "",
+    extensions: [...sharedExtensions, typstFilePath.of(path)],
+  });
   switchTab(path); // path change triggers the plugin to compile
 }
 
@@ -82,7 +86,6 @@ async function removeFile(path: string) {
 
 const typstExtensions = await createTypstExtensions({
   project,
-  filePath: () => activeFile,
   formatter: { instance: formatter, formatOnSave: true },
   highlighting: { theme: "dark" },
 });
@@ -94,7 +97,7 @@ const states: Record<string, EditorState> = Object.fromEntries(
     path,
     EditorState.create({
       doc: project.getText(path) ?? "",
-      extensions: sharedExtensions,
+      extensions: [...sharedExtensions, typstFilePath.of(path)],
     }),
   ]),
 );

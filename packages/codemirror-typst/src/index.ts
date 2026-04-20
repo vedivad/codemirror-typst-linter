@@ -5,6 +5,7 @@ import { ViewPlugin } from "@codemirror/view";
 import type { TypstProject } from "@vedivad/typst-web-service";
 import { typstCompletionSource } from "./completion.js";
 import { toCMDiagnostic } from "./diagnostics.js";
+import { typstFilePath } from "./facets.js";
 import type { TypstFormatterOptions } from "./formatter.js";
 import { createTypstFormatter } from "./formatter.js";
 import { createTypstHover } from "./hover.js";
@@ -46,6 +47,7 @@ export {
   createTypstShikiHighlighting,
   groupDiagnosticsByFile,
   toCMDiagnostic,
+  typstFilePath,
 };
 
 // ---------------------------------------------------------------------------
@@ -60,8 +62,6 @@ export interface TypstExtensionsOptions {
    * `project.onCompile(listener)`.
    */
   project: TypstProject;
-  /** File path this editor represents. Default: () => "/main.typ" */
-  filePath?: () => string;
   /**
    * Debounce delay in ms. Resets on every keystroke and fires once typing pauses.
    * Without a debounce, every keystroke triggers an immediate compile.
@@ -88,26 +88,30 @@ export interface TypstExtensionsOptions {
  * `project.onCompile(...)`, and trigger an out-of-band recompile with
  * `project.compile()`.
  *
+ * The editor's file path is read from the `typstFilePath` facet on the
+ * `EditorState`. Attach it per-editor when creating the state:
+ *
  * ```ts
- * const project = new TypstProject({ compiler, analyzer });
- * await project.setMany(initialFiles);
- *
- * project.onCompile((result) => {
- *   // render preview, update diagnostics panel, ...
- * });
- *
- * const extensions = await createTypstExtensions({
+ * const typstExtensions = await createTypstExtensions({
  *   project,
- *   filePath: () => activeFile,
  *   formatter: { instance: formatter, formatOnSave: true },
  *   highlighting: { theme: "dark" },
  * });
+ *
+ * const shared = [basicSetup, ...typstExtensions];
+ * const state = EditorState.create({
+ *   doc,
+ *   extensions: [...shared, typstFilePath.of("/main.typ")],
+ * });
  * ```
+ *
+ * Switching files is just `view.setState(otherState)` — the new state's
+ * facet value travels along with it, and the compiler plugin reacts.
  */
 export async function createTypstExtensions(
   options: TypstExtensionsOptions,
 ): Promise<Extension[]> {
-  const { project, filePath } = options;
+  const { project } = options;
 
   const shiki = await createTypstShikiHighlighting(options.highlighting);
 
@@ -122,7 +126,6 @@ export async function createTypstExtensions(
           project,
           debounceDelay: delay,
           throttleDelay,
-          filePath,
         },
         view,
       ),
@@ -134,14 +137,13 @@ export async function createTypstExtensions(
   if (project.hasAnalyzer) {
     extensions.push(
       autocompletion({
-        override: [typstCompletionSource({ project, filePath })],
+        override: [typstCompletionSource({ project })],
       }),
     );
 
     extensions.push(
       createTypstHover({
         project,
-        filePath,
         highlightCode: shiki.highlightCode,
       }),
     );

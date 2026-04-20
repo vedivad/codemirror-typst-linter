@@ -83,10 +83,13 @@ const typstExtensions = await createTypstExtensions({
 
 ## Multi-file editor
 
-Pass a `filePath` getter for multi-file projects and keep one shared `TypstProject`:
+For multi-file projects, attach the `typstFilePath` facet per-editor so each
+`EditorState` carries its own path. Switching tabs with
+`view.setState(states[path])` then propagates automatically:
 
 ```ts
-let activeFile = "/main.typ";
+import { typstFilePath } from "@vedivad/codemirror-typst";
+
 const files: Record<string, string> = {
   "/main.typ": "...",
   "/template.typ": "...",
@@ -95,10 +98,18 @@ const files: Record<string, string> = {
 const project = new TypstProject({ compiler, analyzer });
 await project.setMany(files);
 
-const extensions = await createTypstExtensions({
-  project,
-  filePath: () => activeFile,
-});
+const typstExtensions = await createTypstExtensions({ project });
+const shared = [basicSetup, ...typstExtensions];
+
+const states = Object.fromEntries(
+  project.files.map((path) => [
+    path,
+    EditorState.create({
+      doc: project.getText(path) ?? "",
+      extensions: [...shared, typstFilePath.of(path)],
+    }),
+  ]),
+);
 ```
 
 ## Compile timing

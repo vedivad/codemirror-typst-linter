@@ -6,13 +6,11 @@ import type {
   LspHoverContents,
   TypstProject,
 } from "@vedivad/typst-web-service";
+import { typstFilePath } from "./facets.js";
 import { renderHoverMarkdown, type CodeHighlighter } from "./hover-markdown.js";
-import { toPathGetter } from "./utils.js";
 
 export interface TypstHoverOptions {
   project: TypstProject;
-  /** File path this editor represents. Default: () => "/main.typ" */
-  filePath?: () => string;
   /** Optional function to syntax-highlight code blocks. Receives code and language, returns HTML string. */
   highlightCode?: CodeHighlighter;
 }
@@ -67,8 +65,6 @@ function lspHoverToCM(
  * current content is pushed via `setText` before requesting hover info.
  */
 export function createTypstHover(options: TypstHoverOptions): Extension {
-  const getPath = toPathGetter(options.filePath);
-
   return hoverTooltip(async (view, pos): Promise<Tooltip | null> => {
     // If a lint diagnostic covers this position, let the lint tooltip handle it.
     let hasDiagnostic = false;
@@ -77,7 +73,7 @@ export function createTypstHover(options: TypstHoverOptions): Extension {
     });
     if (hasDiagnostic) return null;
 
-    const path = getPath();
+    const path = view.state.facet(typstFilePath);
     const source = view.state.doc.toString();
 
     const line = view.state.doc.lineAt(pos);

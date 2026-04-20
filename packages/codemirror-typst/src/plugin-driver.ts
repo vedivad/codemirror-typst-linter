@@ -1,9 +1,7 @@
 import type { EditorView, ViewUpdate } from "@codemirror/view";
-import { toPathGetter } from "./utils.js";
+import { typstFilePath } from "./facets.js";
 
 export interface BasePluginOptions {
-  /** File path this editor represents. Default: () => "/main.typ" */
-  filePath?: () => string;
   /** Debounce delay in ms before compile/sync runs after doc changes. Default: 0. */
   debounceDelay?: number;
   /** Throttle delay in ms — guarantees a run at least this often during continuous typing. */
@@ -68,32 +66,27 @@ class CompileScheduler {
 }
 
 export class PluginDriver {
-  private readonly getPath: () => string;
   currentPath: string;
   private readonly scheduler: CompileScheduler;
   private readonly callbacks: PluginDriverCallbacks;
 
   constructor(
-    options: {
-      filePath?: () => string;
-      debounceDelay?: number;
-      throttleDelay?: number;
-    },
+    view: EditorView,
+    options: BasePluginOptions,
     callbacks: PluginDriverCallbacks,
   ) {
-    this.getPath = toPathGetter(options.filePath);
-    this.currentPath = this.getPath();
+    this.currentPath = view.state.facet(typstFilePath);
     this.scheduler = new CompileScheduler(options);
     this.callbacks = callbacks;
   }
 
-  /** Trigger an immediate run. Call once after construction when the view is available. */
+  /** Trigger an immediate run. Call once after construction. */
   start(view: EditorView): void {
     this.scheduleRun(view, true);
   }
 
   update(update: ViewUpdate): void {
-    const newPath = this.getPath();
+    const newPath = update.state.facet(typstFilePath);
     if (newPath !== this.currentPath) {
       this.currentPath = newPath;
       this.callbacks.onPathChange?.(update.view);
