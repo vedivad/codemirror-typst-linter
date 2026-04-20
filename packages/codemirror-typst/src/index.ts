@@ -2,7 +2,7 @@ import { autocompletion } from "@codemirror/autocomplete";
 import { lintGutter } from "@codemirror/lint";
 import type { Extension } from "@codemirror/state";
 import { ViewPlugin } from "@codemirror/view";
-import type { CompileResult, TypstProject } from "@vedivad/typst-web-service";
+import type { TypstProject } from "@vedivad/typst-web-service";
 import { typstCompletionSource } from "./completion.js";
 import { toCMDiagnostic } from "./diagnostics.js";
 import type { TypstFormatterOptions } from "./formatter.js";
@@ -56,16 +56,12 @@ export interface TypstExtensionsOptions {
   /**
    * Project that owns the VFS and (optionally) the analyzer. Construct one with
    * `new TypstProject({ compiler, analyzer })` and share it across editors that
-   * should see the same files.
+   * should see the same files. Subscribe to compile results with
+   * `project.onCompile(listener)`.
    */
   project: TypstProject;
   /** File path this editor represents. Default: () => "/main.typ" */
   filePath?: () => string;
-  /**
-   * Called after each successful compile with the full result.
-   * `result.diagnostics` always contains project-wide diagnostics for all files.
-   */
-  onCompile?: (result: CompileResult) => void;
   /**
    * Debounce delay in ms. Resets on every keystroke and fires once typing pauses.
    * Without a debounce, every keystroke triggers an immediate compile.
@@ -87,16 +83,22 @@ export interface TypstExtensionsOptions {
 }
 
 /**
- * Create the default Typst extension set for CodeMirror.
+ * Create the default Typst extension set for CodeMirror. The returned extensions
+ * drive compilation through the shared `TypstProject`; subscribe to results via
+ * `project.onCompile(...)`, and trigger an out-of-band recompile with
+ * `project.compile()`.
  *
  * ```ts
  * const project = new TypstProject({ compiler, analyzer });
  * await project.setMany(initialFiles);
  *
+ * project.onCompile((result) => {
+ *   // render preview, update diagnostics panel, ...
+ * });
+ *
  * const extensions = await createTypstExtensions({
  *   project,
  *   filePath: () => activeFile,
- *   onCompile: (r) => { ... },
  *   formatter: { instance: formatter, formatOnSave: true },
  *   highlighting: { theme: "dark" },
  * });
@@ -105,7 +107,7 @@ export interface TypstExtensionsOptions {
 export async function createTypstExtensions(
   options: TypstExtensionsOptions,
 ): Promise<Extension[]> {
-  const { project, filePath, onCompile } = options;
+  const { project, filePath } = options;
 
   const shiki = await createTypstShikiHighlighting(options.highlighting);
 
@@ -121,7 +123,6 @@ export async function createTypstExtensions(
           debounceDelay: delay,
           throttleDelay,
           filePath,
-          onCompile,
         },
         view,
       ),
@@ -149,5 +150,6 @@ export async function createTypstExtensions(
   if (options.formatter) {
     extensions.push(createTypstFormatter(options.formatter));
   }
+
   return extensions;
 }

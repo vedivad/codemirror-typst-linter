@@ -38,18 +38,53 @@ const filePaths = Object.keys(files);
 let activeFile = filePaths[0];
 let activeView: EditorView | null = null;
 
-// --- Shared extensions (one plugin instance survives tab switches via shared extension refs) ---
+// --- Compile results → preview + diagnostics panel ---
+
+project.onCompile(async (result) => {
+  updateDiagnostics(diagnosticsEl, result.diagnostics);
+  if (result.vector) {
+    const svg = await renderer.renderSvg(result.vector);
+    previewEl.innerHTML = `<div class="svg-container">${svg}</div>`;
+  }
+});
+
+// --- File management ---
+
+async function addFile(rawName: string) {
+  let path = rawName.trim();
+  if (!path) return;
+  if (!path.endsWith(".typ")) path += ".typ";
+  if (!path.startsWith("/")) path = "/" + path;
+  if (filePaths.includes(path)) {
+    alert(`"${path}" already exists.`);
+    return;
+  }
+
+  await project.setText(path, "");
+  states[path] = EditorState.create({ doc: "", extensions: sharedExtensions });
+  filePaths.push(path);
+  switchTab(path); // path change triggers the plugin to compile
+}
+
+async function removeFile(path: string) {
+  if (filePaths.length <= 1) return; // must keep at least one file
+  const idx = filePaths.indexOf(path);
+  filePaths.splice(idx, 1);
+  delete states[path];
+  await project.remove(path);
+  if (activeFile === path) {
+    switchTab(filePaths[Math.max(0, idx - 1)]);
+  } else {
+    await project.compile();
+    renderTabs();
+  }
+}
+
+// --- Editor extensions ---
 
 const typstExtensions = await createTypstExtensions({
   project,
   filePath: () => activeFile,
-  onCompile: async (result) => {
-    updateDiagnostics(diagnosticsEl, result.diagnostics);
-    if (result.vector) {
-      const svg = await renderer.renderSvg(result.vector);
-      previewEl.innerHTML = `<div class="svg-container">${svg}</div>`;
-    }
-  },
   formatter: { instance: formatter, formatOnSave: true },
   highlighting: { theme: "dark" },
 });
@@ -86,13 +121,80 @@ function switchTab(path: string) {
 
 function renderTabs() {
   tabsEl.innerHTML = "";
+
   for (const path of filePaths) {
+    const tabContainer = document.createElement("div");
+    tabContainer.className = "tab-container";
+
     const tab = document.createElement("button");
     tab.className = `tab${path === activeFile ? " active" : ""}`;
     tab.textContent = path.replace(/^\//, "");
     tab.onclick = () => switchTab(path);
-    tabsEl.appendChild(tab);
+    tabContainer.appendChild(tab);
+
+    if (filePaths.length > 1) {
+      const closeBtn = document.createElement("button");
+      closeBtn.className = "tab-close";
+      closeBtn.textContent = "×";
+      closeBtn.title = `Close ${path}`;
+      closeBtn.onclick = async (e) => {
+        e.stopPropagation();
+        await removeFile(path);
+      };
+      tabContainer.appendChild(closeBtn);
+    }
+
+    tabsEl.appendChild(tabContainer);
   }
+
+  // Add "new file" button
+  const addBtn = document.createElement("button");
+  addBtn.className = "tab-add";
+  addBtn.textContent = "+";
+  addBtn.title = "Add new file";
+  addBtn.onclick = () => showNewFileInput();
+  tabsEl.appendChild(addBtn);
+}
+
+function showNewFileInput() {
+  // Check if input is already visible
+  const existing = tabsEl.querySelector(".tab-new-file-input");
+  if (existing) return;
+
+  const inputContainer = document.createElement("div");
+  inputContainer.className = "tab-new-file-input";
+
+  const input = document.createElement("input");
+  input.type = "text";
+  input.placeholder = "filename.typ";
+  input.className = "new-file-input";
+
+  const confirmBtn = document.createElement("button");
+  confirmBtn.textContent = "Add";
+  confirmBtn.className = "new-file-confirm";
+  confirmBtn.onclick = () => {
+    const name = input.value;
+    if (name) {
+      addFile(name);
+    }
+    inputContainer.remove();
+  };
+
+  const cancelBtn = document.createElement("button");
+  cancelBtn.textContent = "Cancel";
+  cancelBtn.className = "new-file-cancel";
+  cancelBtn.onclick = () => inputContainer.remove();
+
+  inputContainer.appendChild(input);
+  inputContainer.appendChild(confirmBtn);
+  inputContainer.appendChild(cancelBtn);
+  tabsEl.appendChild(inputContainer);
+
+  input.focus();
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") confirmBtn.click();
+    if (e.key === "Escape") cancelBtn.click();
+  });
 }
 
 // --- PDF export ---

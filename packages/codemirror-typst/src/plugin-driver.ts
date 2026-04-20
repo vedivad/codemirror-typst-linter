@@ -1,5 +1,4 @@
 import type { EditorView, ViewUpdate } from "@codemirror/view";
-import type { CompileResult } from "@vedivad/typst-web-service";
 import { toPathGetter } from "./utils.js";
 
 export interface BasePluginOptions {
@@ -9,8 +8,6 @@ export interface BasePluginOptions {
   debounceDelay?: number;
   /** Throttle delay in ms — guarantees a run at least this often during continuous typing. */
   throttleDelay?: number;
-  /** Called after each successful compile with the full result (including project-wide diagnostics). */
-  onCompile?: (result: CompileResult) => void;
 }
 
 interface PluginDriverCallbacks {
@@ -73,7 +70,6 @@ class CompileScheduler {
 export class PluginDriver {
   private readonly getPath: () => string;
   currentPath: string;
-  controller: AbortController | null = null;
   private readonly scheduler: CompileScheduler;
   private readonly callbacks: PluginDriverCallbacks;
 
@@ -110,7 +106,6 @@ export class PluginDriver {
   }
 
   dispose(): void {
-    this.controller?.abort();
     this.scheduler.dispose();
   }
 

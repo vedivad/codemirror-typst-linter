@@ -1,5 +1,8 @@
 import { EditorState } from "@codemirror/state";
-import type { DiagnosticMessage } from "@vedivad/typst-web-service";
+import type {
+  CompileResult,
+  DiagnosticMessage,
+} from "@vedivad/typst-web-service";
 import { describe, expect, it, vi } from "vitest";
 import { CompilerLintPlugin } from "../compiler-plugin.js";
 
@@ -9,11 +12,25 @@ function mockView(doc: string) {
 }
 
 function mockProject(diagnostics: DiagnosticMessage[] = []) {
-  return {
+  const listeners = new Set<(r: CompileResult) => void>();
+  const project = {
     hasAnalyzer: false,
     setText: vi.fn().mockResolvedValue(undefined),
-    compile: vi.fn().mockResolvedValue({ diagnostics }),
-  } as any;
+    compile: vi.fn().mockImplementation(async () => {
+      const result: CompileResult = { diagnostics };
+      listeners.forEach((l) => l(result));
+      return result;
+    }),
+    onCompile: vi.fn((listener: (r: CompileResult) => void) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    }),
+    fire(result: CompileResult) {
+      listeners.forEach((l) => l(result));
+    },
+    listeners,
+  };
+  return project;
 }
 
 function waitFor(fn: () => boolean, timeout = 1000): Promise<void> {
@@ -29,7 +46,35 @@ function waitFor(fn: () => boolean, timeout = 1000): Promise<void> {
 }
 
 describe("CompilerLintPlugin", () => {
-  it("returns project-wide diagnostics via onCompile", async () => {
+  it("pushes the editor's content to the project before compiling", async () => {
+    const project = mockProject();
+    const view = mockView("hello");
+    new CompilerLintPlugin(
+      { project: project as any, filePath: () => "/main.typ" },
+      view,
+    );
+
+    await waitFor(() => project.compile.mock.calls.length > 0);
+    expect(project.setText).toHaveBeenCalledWith("/main.typ", "hello");
+    expect(project.setText).toHaveBeenCalledBefore(project.compile);
+  });
+
+  it("subscribes to project.onCompile on construction and unsubscribes on destroy", () => {
+    const project = mockProject();
+    const view = mockView("x");
+    const plugin = new CompilerLintPlugin(
+      { project: project as any, filePath: () => "/main.typ" },
+      view,
+    );
+
+    expect(project.onCompile).toHaveBeenCalledTimes(1);
+    expect(project.listeners.size).toBe(1);
+
+    plugin.destroy();
+    expect(project.listeners.size).toBe(0);
+  });
+
+  it("dispatches to the view when project fires a compile event", async () => {
     const diags: DiagnosticMessage[] = [
       {
         package: "",
@@ -47,109 +92,41 @@ describe("CompilerLintPlugin", () => {
       },
     ];
     const project = mockProject(diags);
-    const onCompile = vi.fn();
     const view = mockView("abc");
-    new CompilerLintPlugin({ project, onCompile }, view);
-
-    await waitFor(() => onCompile.mock.calls.length > 0);
-    expect(onCompile).toHaveBeenCalledWith(
-      expect.objectContaining({ diagnostics: diags }),
-    );
-  });
-
-  it("surfaces thrown compile errors via onCompile", async () => {
-    const project = {
-      hasAnalyzer: false,
-      setText: vi.fn().mockResolvedValue(undefined),
-      compile: vi.fn().mockRejectedValue(new Error("boom")),
-    } as any;
-    const onCompile = vi.fn();
-    const view = mockView("x");
     new CompilerLintPlugin(
-      { project, onCompile, filePath: () => "/main.typ" },
+      { project: project as any, filePath: () => "/main.typ" },
       view,
     );
 
-    await waitFor(() => onCompile.mock.calls.length > 0);
-    const result = onCompile.mock.calls[0][0];
-    expect(result.diagnostics).toHaveLength(1);
-    expect(result.diagnostics[0]).toMatchObject({
-      path: "/main.typ",
-      severity: "Error",
-      message: "boom",
-    });
+    await waitFor(() => view.dispatch.mock.calls.length > 0);
+    expect(view.dispatch).toHaveBeenCalled();
   });
 
-  it("pushes the editor's content to the project before compiling", async () => {
+  it("reacts to externally-triggered compile events", async () => {
     const project = mockProject();
-    const view = mockView("hello");
-    new CompilerLintPlugin({ project, filePath: () => "/main.typ" }, view);
+    const view = mockView("abc");
+    new CompilerLintPlugin(
+      { project: project as any, filePath: () => "/main.typ" },
+      view,
+    );
 
-    await waitFor(() => project.compile.mock.calls.length > 0);
-    expect(project.setText).toHaveBeenCalledWith("/main.typ", "hello");
-    expect(project.setText).toHaveBeenCalledBefore(project.compile);
-  });
+    // Flush the initial compile kicked off by the plugin.
+    await waitFor(() => view.dispatch.mock.calls.length > 0);
+    const before = view.dispatch.mock.calls.length;
 
-  it("aborts previous compile when a new one starts", async () => {
-    const onCompile = vi.fn();
-    let resolveFirst: (v: any) => void;
-    const project = {
-      hasAnalyzer: false,
-      setText: vi.fn().mockResolvedValue(undefined),
-      compile: vi
-        .fn()
-        .mockImplementationOnce(
-          () =>
-            new Promise((resolve) => {
-              resolveFirst = resolve;
-            }),
-        )
-        .mockResolvedValueOnce({
-          diagnostics: [
-            {
-              path: "/main.typ",
-              severity: "Error",
-              range: { startLine: 0, startCol: 0, endLine: 0, endCol: 1 },
-              message: "second",
-              package: "",
-            },
-          ],
-        }),
-    } as any;
-
-    const view = mockView("x");
-    const plugin = new CompilerLintPlugin({ project, onCompile }, view);
-
-    // Wait for first compile to start
-    await waitFor(() => project.compile.mock.calls.length > 0);
-
-    // Trigger second compile via update
-    plugin.update({ docChanged: true, view } as any);
-
-    // Wait for second compile
-    await waitFor(() => project.compile.mock.calls.length > 1);
-
-    // Resolve the first compile — its callback should not fire (aborted)
-    resolveFirst!({
+    // Simulate a compile event that did not originate from this plugin.
+    project.fire({
       diagnostics: [
         {
+          package: "",
           path: "/main.typ",
           severity: "Error",
-          range: { startLine: 0, startCol: 0, endLine: 0, endCol: 1 },
-          message: "first",
-          package: "",
+          range: { startLine: 0, startCol: 0, endLine: 0, endCol: 3 },
+          message: "late",
         },
       ],
     });
 
-    await waitFor(() => onCompile.mock.calls.length > 0);
-    expect(onCompile).toHaveBeenCalledTimes(1);
-    expect(onCompile).toHaveBeenCalledWith(
-      expect.objectContaining({
-        diagnostics: expect.arrayContaining([
-          expect.objectContaining({ message: "second" }),
-        ]),
-      }),
-    );
+    expect(view.dispatch.mock.calls.length).toBe(before + 1);
   });
 });

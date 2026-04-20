@@ -71,8 +71,16 @@ header p {
 
 .tabs {
   display: flex;
+  align-items: center;
   background: #16213e;
   border-bottom: 1px solid #333;
+  gap: 0;
+}
+
+.tab-container {
+  display: flex;
+  align-items: center;
+  gap: 0;
 }
 
 .tab {
@@ -84,6 +92,7 @@ header p {
   font-size: 0.8rem;
   cursor: pointer;
   border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
 }
 
 .tab:hover {
@@ -93,6 +102,99 @@ header p {
 .tab.active {
   color: #7ecfff;
   border-bottom-color: #7ecfff;
+}
+
+.tab-close {
+  padding: 0.4rem 0.4rem;
+  background: none;
+  border: none;
+  color: #666;
+  font-family: monospace;
+  font-size: 1rem;
+  cursor: pointer;
+  line-height: 1;
+  margin-left: -0.4rem;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.tab-container:hover .tab-close {
+  opacity: 1;
+}
+
+.tab-close:hover {
+  color: #e5534b;
+}
+
+.tab-add {
+  padding: 0.4rem 0.8rem;
+  background: none;
+  border: none;
+  color: #666;
+  font-family: monospace;
+  font-size: 0.9rem;
+  cursor: pointer;
+  margin-left: 0.2rem;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+
+.tab-add:hover {
+  color: #7ecfff;
+}
+
+.tab-new-file-input {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.3rem 0.5rem;
+  background: #16213e;
+  border-left: 1px solid #333;
+  margin-left: auto;
+}
+
+.new-file-input {
+  padding: 0.3rem 0.5rem;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid #444;
+  color: #e0e0e0;
+  font-family: monospace;
+  font-size: 0.8rem;
+  border-radius: 2px;
+  width: 120px;
+}
+
+.new-file-input::placeholder {
+  color: #666;
+}
+
+.new-file-input:focus {
+  outline: none;
+  border-color: #7ecfff;
+  background: rgba(126, 207, 255, 0.1);
+}
+
+.new-file-confirm,
+.new-file-cancel {
+  padding: 0.2rem 0.6rem;
+  background: #333;
+  border: 1px solid #444;
+  color: #e0e0e0;
+  font-family: monospace;
+  font-size: 0.75rem;
+  cursor: pointer;
+  border-radius: 2px;
+}
+
+.new-file-confirm:hover {
+  background: #7ecfff;
+  color: #1a1a2e;
+  border-color: #7ecfff;
+}
+
+.new-file-cancel:hover {
+  background: #444;
+  color: #e0e0e0;
 }
 
 /* Editor */

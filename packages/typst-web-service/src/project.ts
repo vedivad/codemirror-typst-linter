@@ -34,6 +34,22 @@ const DEFAULT_ROOT = "/project";
  *   await project.setMany({ "/main.typ": "...", "/utils.typ": "..." });
  *   const result = await project.compile();
  */
+export type CompileListener = (result: CompileResult) => void;
+
+function errorAsCompileResult(err: unknown, path: string): CompileResult {
+  return {
+    diagnostics: [
+      {
+        package: "",
+        path,
+        severity: "Error",
+        range: { startLine: 0, startCol: 0, endLine: 0, endCol: 1 },
+        message: err instanceof Error ? err.message : String(err),
+      },
+    ],
+  };
+}
+
 export class TypstProject {
   private readonly compiler: TypstCompiler;
   private readonly analyzer?: TypstAnalyzer;
@@ -41,6 +57,8 @@ export class TypstProject {
   private readonly trackedTextPaths = new Set<string>();
   /** Last content written via setText/setMany, per path. Used to skip redundant writes to compiler + analyzer. */
   private readonly lastSyncedContent = new Map<string, string>();
+  private readonly compileListeners = new Set<CompileListener>();
+  private compileVersion = 0;
   private _entry: string;
 
   constructor(options: TypstProjectOptions) {
@@ -153,9 +171,43 @@ export class TypstProject {
     await Promise.all([compilerOp, analyzerOp]);
   }
 
-  /** Compile the current VFS state using the sticky entry. */
-  compile(): Promise<CompileResult> {
-    return this.compiler.compile(undefined, this._entry);
+  /**
+   * Subscribe to compile results. Fires after every `compile()` whose result is
+   * still current (stale results from out-of-order concurrent compiles are
+   * dropped). Returns an unsubscribe function.
+   */
+  onCompile(listener: CompileListener): () => void {
+    this.compileListeners.add(listener);
+    return () => {
+      this.compileListeners.delete(listener);
+    };
+  }
+
+  /**
+   * Compile the current VFS state using the sticky entry. Errors from the
+   * underlying compiler are converted into a synthetic error diagnostic so
+   * callers and listeners always receive a `CompileResult`. Listeners are
+   * notified only for the most recent compile — results from an earlier call
+   * that resolves after a later one are suppressed.
+   */
+  async compile(): Promise<CompileResult> {
+    const version = ++this.compileVersion;
+    let result: CompileResult;
+    try {
+      result = await this.compiler.compile(undefined, this._entry);
+    } catch (err) {
+      result = errorAsCompileResult(err, this._entry);
+    }
+    if (version === this.compileVersion) {
+      for (const listener of this.compileListeners) {
+        try {
+          listener(result);
+        } catch (err) {
+          console.error("[typst] compile listener threw:", err);
+        }
+      }
+    }
+    return result;
   }
 
   /** Compile the current VFS state to PDF using the sticky entry. */
