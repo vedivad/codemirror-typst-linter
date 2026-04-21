@@ -31,6 +31,8 @@ export interface LspCompletionItem {
   detail?: string;
   documentation?: string | LspMarkupContent;
   insertText?: string;
+  /** LSP InsertTextFormat: 1 = PlainText, 2 = Snippet (TextMate syntax). */
+  insertTextFormat?: number;
   filterText?: string;
   sortText?: string;
   textEdit?: {
