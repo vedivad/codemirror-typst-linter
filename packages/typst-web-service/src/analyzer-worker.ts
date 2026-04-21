@@ -1,6 +1,10 @@
 import * as Comlink from "comlink";
 import init, { TinymistLanguageServer } from "tinymist-web";
-import type { LspCompletionResponse, LspHover } from "./analyzer-types.js";
+import type {
+  LspCompletionResponse,
+  LspHover,
+  LspPosition,
+} from "./analyzer-types.js";
 
 class AnalyzerWorker {
   private server: TinymistLanguageServer | null = null;
@@ -122,36 +126,47 @@ class AnalyzerWorker {
 
   async completion(
     uri: string,
-    line: number,
-    character: number,
+    position: LspPosition,
   ): Promise<LspCompletionResponse> {
-    const result = this.ensureServer().on_request("textDocument/completion", {
-      textDocument: { uri },
-      position: { line, character },
-    });
-    const resolved =
-      result && typeof result === "object" && "then" in result
-        ? await result
-        : result;
+    const resolved = await this.ensureServer().on_request(
+      "textDocument/completion",
+      { textDocument: { uri }, position },
+    );
     this.flushEvents();
     return (resolved ?? null) as LspCompletionResponse;
   }
 
-  async hover(
-    uri: string,
-    line: number,
-    character: number,
-  ): Promise<LspHover | null> {
-    const result = this.ensureServer().on_request("textDocument/hover", {
-      textDocument: { uri },
-      position: { line, character },
-    });
-    const resolved =
-      result && typeof result === "object" && "then" in result
-        ? await result
-        : result;
+  async hover(uri: string, position: LspPosition): Promise<LspHover | null> {
+    const resolved = await this.ensureServer().on_request(
+      "textDocument/hover",
+      { textDocument: { uri }, position },
+    );
     this.flushEvents();
     return (resolved ?? null) as LspHover | null;
+  }
+
+  async completionWithDoc(
+    uri: string,
+    version: number,
+    content: string,
+    position: LspPosition,
+    kind: "open" | "change",
+  ): Promise<LspCompletionResponse> {
+    if (kind === "open") this.notifyDidOpen(uri, content);
+    else this.notifyDidChange(uri, version, content);
+    return this.completion(uri, position);
+  }
+
+  async hoverWithDoc(
+    uri: string,
+    version: number,
+    content: string,
+    position: LspPosition,
+    kind: "open" | "change",
+  ): Promise<LspHover | null> {
+    if (kind === "open") this.notifyDidOpen(uri, content);
+    else this.notifyDidChange(uri, version, content);
+    return this.hover(uri, position);
   }
 
   destroy(): void {

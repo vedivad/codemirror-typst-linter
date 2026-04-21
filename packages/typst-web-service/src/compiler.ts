@@ -64,6 +64,8 @@ export class TypstCompiler {
   private readonly proxy: Comlink.Remote<CompilerWorkerAPI>;
   private readonly worker: Worker;
   private readonly encoder = new TextEncoder();
+  /** Last text content pushed per path. Drives own-RPC dedup. Invalidated by binary writes. */
+  private readonly content = new Map<string, string>();
 
   private constructor(
     worker: Worker,
@@ -106,8 +108,13 @@ export class TypstCompiler {
     return this.proxy.compilePdf(entry);
   }
 
-  /** Add or overwrite a text file in the virtual compiler filesystem. */
-  setText(path: string, source: string): Promise<void> {
+  /**
+   * Add or overwrite a text file in the virtual compiler filesystem. Skips
+   * the worker RPC when `source` matches the last value pushed for `path`.
+   */
+  async setText(path: string, source: string): Promise<void> {
+    if (this.content.get(path) === source) return;
+    this.content.set(path, source);
     return this.proxy.mapShadow(path, this.encoder.encode(source));
   }
 
@@ -123,15 +130,23 @@ export class TypstCompiler {
 
   /**
    * Add or overwrite multiple files in the virtual compiler filesystem in a
-   * single worker roundtrip. Strings are UTF-8 encoded; Uint8Arrays are passed
-   * through.
+   * single worker roundtrip. Strings are UTF-8 encoded; Uint8Arrays are
+   * passed through. Text entries unchanged since their last push are skipped;
+   * binary entries always push and invalidate the text cache for their path.
    */
-  setMany(files: Record<string, string | Uint8Array>): Promise<void> {
+  async setMany(files: Record<string, string | Uint8Array>): Promise<void> {
     const encoded: Record<string, Uint8Array> = {};
     for (const [path, content] of Object.entries(files)) {
-      encoded[path] =
-        typeof content === "string" ? this.encoder.encode(content) : content;
+      if (typeof content === "string") {
+        if (this.content.get(path) === content) continue;
+        this.content.set(path, content);
+        encoded[path] = this.encoder.encode(content);
+      } else {
+        this.content.delete(path);
+        encoded[path] = content;
+      }
     }
+    if (Object.keys(encoded).length === 0) return;
     return this.proxy.mapShadowMany(encoded);
   }
 
@@ -140,6 +155,7 @@ export class TypstCompiler {
     path: string,
     content: ArrayBuffer | ArrayBufferView,
   ): Promise<void> {
+    this.content.delete(path);
     const bytes =
       content instanceof ArrayBuffer
         ? new Uint8Array(content)
@@ -153,11 +169,13 @@ export class TypstCompiler {
 
   /** Remove a file from the virtual compiler filesystem. */
   remove(path: string): Promise<void> {
+    this.content.delete(path);
     return this.proxy.unmapShadow(path);
   }
 
   /** Clear all virtual files from the compiler filesystem. */
   clear(): Promise<void> {
+    this.content.clear();
     return this.proxy.resetShadow();
   }
 

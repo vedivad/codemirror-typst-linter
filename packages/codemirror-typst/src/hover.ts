@@ -62,7 +62,8 @@ function lspHoverToCM(
 
 /**
  * Create a CM6 hover tooltip extension backed by a TypstProject. The editor's
- * current content is pushed via `setText` before requesting hover info.
+ * current content is attached to the hover request in a single analyzer
+ * roundtrip, so the analyzer sees the latest buffer state without an extra RTT.
  */
 export function createTypstHover(options: TypstHoverOptions): Extension {
   return hoverTooltip(async (view, pos): Promise<Tooltip | null> => {
@@ -77,12 +78,10 @@ export function createTypstHover(options: TypstHoverOptions): Extension {
     const source = view.state.doc.toString();
 
     const line = view.state.doc.lineAt(pos);
-    const lspLine = line.number - 1;
-    const lspChar = pos - line.from;
+    const position = { line: line.number - 1, character: pos - line.from };
 
     try {
-      await options.project.setText(path, source);
-      const result = await options.project.hover(path, lspLine, lspChar);
+      const result = await options.project.hover(path, source, position);
       if (!result) return null;
       return lspHoverToCM(view.state, pos, result, options.highlightCode);
     } catch {

@@ -1,5 +1,9 @@
 import type { TypstAnalyzer } from "./analyzer.js";
-import type { LspCompletionResponse, LspHover } from "./analyzer-types.js";
+import type {
+  LspCompletionResponse,
+  LspHover,
+  LspPosition,
+} from "./analyzer-types.js";
 import type { CompileResult, TypstCompiler } from "./compiler.js";
 import {
   normalizePath,
@@ -62,8 +66,8 @@ export class TypstProject {
   private readonly analyzer?: TypstAnalyzer;
   private readonly analyzerUriRoot: string;
   private readonly trackedTextPaths = new Set<Path>();
-  /** Last content written via setText/setMany, per path. Used to skip redundant writes to compiler + analyzer. */
-  private readonly lastSyncedContent = new Map<Path, string>();
+  /** Latest content observed for a path. Read-through source for `getText`. Per-sink dedup lives in the compiler and analyzer. */
+  private readonly contentByPath = new Map<Path, string>();
   private readonly compileListeners = new Set<CompileListener>();
   private compileVersion = 0;
   private _lastResult: CompileResult | undefined;
@@ -117,19 +121,18 @@ export class TypstProject {
    * project's sync cache — lets consumers avoid shadowing the VFS themselves.
    */
   getText(path: Path): string | undefined {
-    return this.lastSyncedContent.get(normalizePath(path));
+    return this.contentByPath.get(normalizePath(path));
   }
 
   /**
    * Add or overwrite a text file. Goes to the compiler's VFS and, when an
-   * analyzer is attached, to the analyzer as a document change. Redundant
-   * calls with unchanged content are skipped.
+   * analyzer is attached, to the analyzer as a document change. The compiler
+   * and analyzer each dedup internally, so redundant calls are cheap.
    */
   async setText(path: Path, content: string): Promise<void> {
     const p = normalizePath(path);
     this.trackedTextPaths.add(p);
-    if (this.lastSyncedContent.get(p) === content) return;
-    this.lastSyncedContent.set(p, content);
+    this.contentByPath.set(p, content);
     const ops: Array<Promise<void>> = [this.compiler.setText(p, content)];
     if (this.analyzer) {
       ops.push(
@@ -161,23 +164,20 @@ export class TypstProject {
    */
   async setMany(files: Record<Path, string | Uint8Array>): Promise<void> {
     const normalized: Record<Path, string | Uint8Array> = {};
+    const analyzerDocs: Record<string, string> = {};
     for (const [path, content] of Object.entries(files)) {
-      normalized[normalizePath(path)] = content;
+      const p = normalizePath(path);
+      normalized[p] = content;
+      if (typeof content === "string") {
+        this.trackedTextPaths.add(p);
+        this.contentByPath.set(p, content);
+        analyzerDocs[pathToAnalyzerUri(p, this.analyzerUriRoot)] = content;
+      }
     }
-    const docs: Record<string, string> = {};
-    for (const [path, content] of Object.entries(normalized)) {
-      if (typeof content !== "string") continue;
-      this.trackedTextPaths.add(path);
-      if (this.lastSyncedContent.get(path) === content) continue;
-      this.lastSyncedContent.set(path, content);
-      docs[pathToAnalyzerUri(path, this.analyzerUriRoot)] = content;
-    }
-    const compilerOp = this.compiler.setMany(normalized);
-    const analyzerOp =
-      this.analyzer && Object.keys(docs).length > 0
-        ? this.analyzer.didChangeMany(docs)
-        : Promise.resolve();
-    await Promise.all([compilerOp, analyzerOp]);
+    await Promise.all([
+      this.compiler.setMany(normalized),
+      this.analyzer?.didChangeMany(analyzerDocs) ?? Promise.resolve(),
+    ]);
   }
 
   /**
@@ -187,7 +187,7 @@ export class TypstProject {
   async remove(path: Path): Promise<void> {
     const p = normalizePath(path);
     const wasText = this.trackedTextPaths.delete(p);
-    this.lastSyncedContent.delete(p);
+    this.contentByPath.delete(p);
     const ops: Array<Promise<void>> = [this.compiler.remove(p)];
     if (this.analyzer && wasText) {
       ops.push(
@@ -203,7 +203,7 @@ export class TypstProject {
       pathToAnalyzerUri(p, this.analyzerUriRoot),
     );
     this.trackedTextPaths.clear();
-    this.lastSyncedContent.clear();
+    this.contentByPath.clear();
     const compilerOp = this.compiler.clear();
     const analyzerOp =
       this.analyzer && uris.length > 0
@@ -273,25 +273,46 @@ export class TypstProject {
     return this.analyzer;
   }
 
-  /** Request completions at the given position. Throws when no analyzer is attached. */
+  /**
+   * Request completion for `path` at `position`, using `source` as the
+   * current document state. One analyzer roundtrip; compiler is not touched —
+   * the compile sync path writes to the compiler separately. Throws when no
+   * analyzer is attached.
+   */
   completion(
     path: Path,
-    line: number,
-    character: number,
+    source: string,
+    position: LspPosition,
   ): Promise<LspCompletionResponse> {
-    return this.requireAnalyzer("completion").completion(
-      pathToAnalyzerUri(normalizePath(path), this.analyzerUriRoot),
-      line,
-      character,
+    const analyzer = this.requireAnalyzer("completion");
+    const p = normalizePath(path);
+    this.trackedTextPaths.add(p);
+    this.contentByPath.set(p, source);
+    return analyzer.completion(
+      pathToAnalyzerUri(p, this.analyzerUriRoot),
+      source,
+      position,
     );
   }
 
-  /** Request hover info at the given position. Throws when no analyzer is attached. */
-  hover(path: Path, line: number, character: number): Promise<LspHover | null> {
-    return this.requireAnalyzer("hover").hover(
-      pathToAnalyzerUri(normalizePath(path), this.analyzerUriRoot),
-      line,
-      character,
+  /**
+   * Request hover for `path` at `position`, using `source` as the current
+   * document state. One analyzer roundtrip; compiler is not touched. Throws
+   * when no analyzer is attached.
+   */
+  hover(
+    path: Path,
+    source: string,
+    position: LspPosition,
+  ): Promise<LspHover | null> {
+    const analyzer = this.requireAnalyzer("hover");
+    const p = normalizePath(path);
+    this.trackedTextPaths.add(p);
+    this.contentByPath.set(p, source);
+    return analyzer.hover(
+      pathToAnalyzerUri(p, this.analyzerUriRoot),
+      source,
+      position,
     );
   }
 
@@ -310,7 +331,7 @@ export class TypstProject {
     this.destroyed = true;
     this.compileListeners.clear();
     this.trackedTextPaths.clear();
-    this.lastSyncedContent.clear();
+    this.contentByPath.clear();
     this._lastResult = undefined;
     this.compiler.destroy();
     this.analyzer?.destroy();

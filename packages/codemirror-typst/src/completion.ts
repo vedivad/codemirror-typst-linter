@@ -100,8 +100,8 @@ function lspCompletionToCM(
 
 /**
  * Create a CM6 CompletionSource backed by a TypstProject. The editor's current
- * content is pushed via `setText` before requesting completions, so the
- * analyzer always sees the latest buffer state.
+ * content is attached to the completion request in a single analyzer roundtrip,
+ * so the analyzer always sees the latest buffer state without an extra RTT.
  */
 export function typstCompletionSource(
   options: TypstCompletionOptions,
@@ -114,12 +114,10 @@ export function typstCompletionSource(
     const source = ctx.state.doc.toString();
 
     const line = ctx.state.doc.lineAt(ctx.pos);
-    const lspLine = line.number - 1;
-    const lspChar = ctx.pos - line.from;
+    const position = { line: line.number - 1, character: ctx.pos - line.from };
 
     try {
-      await options.project.setText(path, source);
-      const result = await options.project.completion(path, lspLine, lspChar);
+      const result = await options.project.completion(path, source, position);
       if (!result) return null;
       return lspCompletionToCM(ctx, result);
     } catch {

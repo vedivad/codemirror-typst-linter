@@ -1,5 +1,9 @@
 import * as Comlink from "comlink";
-import type { LspCompletionResponse, LspHover } from "./analyzer-types.js";
+import type {
+  LspCompletionResponse,
+  LspHover,
+  LspPosition,
+} from "./analyzer-types.js";
 import { createAnalyzerWorker } from "./rpc.js";
 
 export interface TypstAnalyzerOptions {
@@ -28,10 +32,23 @@ interface AnalyzerWorkerAPI {
   didCloseMany(uris: string[]): Promise<void>;
   completion(
     uri: string,
-    line: number,
-    character: number,
+    position: LspPosition,
   ): Promise<LspCompletionResponse>;
-  hover(uri: string, line: number, character: number): Promise<LspHover | null>;
+  hover(uri: string, position: LspPosition): Promise<LspHover | null>;
+  completionWithDoc(
+    uri: string,
+    version: number,
+    content: string,
+    position: LspPosition,
+    kind: "open" | "change",
+  ): Promise<LspCompletionResponse>;
+  hoverWithDoc(
+    uri: string,
+    version: number,
+    content: string,
+    position: LspPosition,
+    kind: "open" | "change",
+  ): Promise<LspHover | null>;
   destroy(): void;
 }
 
@@ -45,7 +62,9 @@ export class TypstAnalyzer {
   private readonly proxy: Comlink.Remote<AnalyzerWorkerAPI>;
   private readonly worker: Worker;
   private versionCounter = 0;
-  private openedUris = new Set<string>();
+  private readonly openedUris = new Set<string>();
+  /** Last content pushed to the worker per URI. Drives own-RPC dedup. */
+  private readonly content = new Map<string, string>();
 
   private constructor(
     worker: Worker,
@@ -70,22 +89,27 @@ export class TypstAnalyzer {
 
   async didOpen(uri: string, content: string): Promise<void> {
     this.openedUris.add(uri);
+    this.content.set(uri, content);
     await this.proxy.didOpen(uri, content);
   }
 
   async didClose(uri: string): Promise<void> {
     if (!this.openedUris.delete(uri)) return;
+    this.content.delete(uri);
     await this.proxy.didClose(uri);
   }
 
   /**
-   * Notify the analyzer that a document has changed.
+   * Notify the analyzer that a document has changed. Skips the RPC when the
+   * content matches what the worker last saw.
    */
   async didChange(uri: string, content: string): Promise<void> {
     if (!this.openedUris.has(uri)) {
       await this.didOpen(uri, content);
       return;
     }
+    if (this.content.get(uri) === content) return;
+    this.content.set(uri, content);
     const version = ++this.versionCounter;
     await this.proxy.didChange(uri, version, content);
   }
@@ -93,17 +117,20 @@ export class TypstAnalyzer {
   /**
    * Batch document changes. Splits inputs into opens (first-time URIs) and
    * changes (already-open URIs) and sends them in a single worker roundtrip.
+   * Skips unchanged documents; returns without an RPC if nothing is pending.
    */
   async didChangeMany(docs: Record<string, string>): Promise<void> {
     const opens: Array<{ uri: string; content: string }> = [];
     const changes: Array<{ uri: string; version: number; content: string }> =
       [];
     for (const [uri, content] of Object.entries(docs)) {
-      if (this.openedUris.has(uri)) {
-        changes.push({ uri, version: ++this.versionCounter, content });
-      } else {
+      if (!this.openedUris.has(uri)) {
         opens.push({ uri, content });
         this.openedUris.add(uri);
+        this.content.set(uri, content);
+      } else if (this.content.get(uri) !== content) {
+        changes.push({ uri, version: ++this.versionCounter, content });
+        this.content.set(uri, content);
       }
     }
     if (opens.length === 0 && changes.length === 0) return;
@@ -117,26 +144,67 @@ export class TypstAnalyzer {
   async didCloseMany(uris: string[]): Promise<void> {
     const toClose: string[] = [];
     for (const uri of uris) {
-      if (this.openedUris.delete(uri)) toClose.push(uri);
+      if (this.openedUris.delete(uri)) {
+        this.content.delete(uri);
+        toClose.push(uri);
+      }
     }
     if (toClose.length === 0) return;
     await this.proxy.didCloseMany(toClose);
   }
 
+  /**
+   * Request completion at `position` for `uri`, with `content` as the current
+   * document state. Bundles the didChange notification with the request in one
+   * worker roundtrip; degrades to a plain completion request when the worker
+   * already has this exact content.
+   */
   async completion(
     uri: string,
-    line: number,
-    character: number,
+    content: string,
+    position: LspPosition,
   ): Promise<LspCompletionResponse> {
-    return this.proxy.completion(uri, line, character);
+    if (this.openedUris.has(uri) && this.content.get(uri) === content) {
+      return this.proxy.completion(uri, position);
+    }
+    const isOpen = this.openedUris.has(uri);
+    if (!isOpen) this.openedUris.add(uri);
+    this.content.set(uri, content);
+    const version = ++this.versionCounter;
+    return this.proxy.completionWithDoc(
+      uri,
+      version,
+      content,
+      position,
+      isOpen ? "change" : "open",
+    );
   }
 
+  /**
+   * Request hover at `position` for `uri`, with `content` as the current
+   * document state. Bundles the didChange notification with the request in one
+   * worker roundtrip; degrades to a plain hover request when the worker
+   * already has this exact content.
+   */
   async hover(
     uri: string,
-    line: number,
-    character: number,
+    content: string,
+    position: LspPosition,
   ): Promise<LspHover | null> {
-    return this.proxy.hover(uri, line, character);
+    if (this.openedUris.has(uri) && this.content.get(uri) === content) {
+      return this.proxy.hover(uri, position);
+    }
+    const isOpen = this.openedUris.has(uri);
+    if (!isOpen) this.openedUris.add(uri);
+    this.content.set(uri, content);
+    const version = ++this.versionCounter;
+    return this.proxy.hoverWithDoc(
+      uri,
+      version,
+      content,
+      position,
+      isOpen ? "change" : "open",
+    );
   }
 
   destroy(): void {
