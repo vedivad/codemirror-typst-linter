@@ -50,8 +50,7 @@ const DEFAULT_FONTS = [
   "https://cdn.jsdelivr.net/npm/roboto-font@0.1.0/fonts/Roboto/roboto-regular-webfont.ttf",
 ];
 
-const DEFAULT_WASM_URL =
-  `https://cdn.jsdelivr.net/npm/@myriaddreamin/typst-ts-web-compiler@${__TYPST_TS_WEB_COMPILER_VERSION__}/pkg/typst_ts_web_compiler_bg.wasm`;
+const DEFAULT_WASM_URL = `https://cdn.jsdelivr.net/npm/@myriaddreamin/typst-ts-web-compiler@${__TYPST_TS_WEB_COMPILER_VERSION__}/pkg/typst_ts_web_compiler_bg.wasm`;
 
 /**
  * Manages a Typst compiler worker. Create one instance and share it across

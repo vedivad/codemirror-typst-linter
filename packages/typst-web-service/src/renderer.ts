@@ -19,8 +19,7 @@ type RendererWasmModule = typeof import("@myriaddreamin/typst-ts-renderer");
 
 declare const __TYPST_TS_RENDERER_VERSION__: string;
 
-const DEFAULT_RENDERER_WASM_URL =
-  `https://cdn.jsdelivr.net/npm/@myriaddreamin/typst-ts-renderer@${__TYPST_TS_RENDERER_VERSION__}/pkg/typst_ts_renderer_bg.wasm`;
+const DEFAULT_RENDERER_WASM_URL = `https://cdn.jsdelivr.net/npm/@myriaddreamin/typst-ts-renderer@${__TYPST_TS_RENDERER_VERSION__}/pkg/typst_ts_renderer_bg.wasm`;
 
 let rendererModulePromise: Promise<RendererWasmModule> | null = null;
 

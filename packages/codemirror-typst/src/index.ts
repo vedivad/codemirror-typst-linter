@@ -63,23 +63,10 @@ export interface TypstExtensionsOptions {
    * Project that owns the VFS and (optionally) the analyzer. Construct one with
    * `new TypstProject({ compiler, analyzer })` and share it across editors that
    * should see the same files. Subscribe to compile results with
-   * `project.onCompile(listener)`.
+   * `project.onCompile(listener)`. Configure compile debounce/throttle via
+   * `compileDebounceMs` / `compileThrottleMs` on the project itself.
    */
   project: TypstProject;
-  /**
-   * Debounce delay in ms. Resets on every keystroke and fires once typing pauses.
-   * Without a debounce, every keystroke triggers an immediate compile.
-   * Best paired with `throttleDelay` to get periodic updates during long edits.
-   * Default: 0 (compile immediately).
-   */
-  debounceDelay?: number;
-  /**
-   * Throttle delay in ms. When typing continues past this window, forces a compile
-   * even if the debounce hasn't fired yet. Only effective when `debounceDelay` > 0 —
-   * without a debounce there is nothing to hold back.
-   * Default: disabled.
-   */
-  throttleDelay?: number;
   /** Code formatter. Omit to disable. */
   formatter?: TypstFormatterOptions;
   /** Syntax highlighting. Omit for defaults (github-dark). */
@@ -119,12 +106,10 @@ export async function createTypstExtensions(
 
   const shiki = await createTypstShikiHighlighting(options.highlighting);
 
-  const delay = options.debounceDelay ?? 0;
-  const throttleDelay = options.throttleDelay;
   const extensions: Extension[] = [shiki.extension, lintGutter()];
 
   extensions.push(
-    createTypstCompileSync({ project, debounceDelay: delay, throttleDelay }),
+    createTypstCompileSync({ project }),
     createTypstDiagnostics({ project }),
   );
 

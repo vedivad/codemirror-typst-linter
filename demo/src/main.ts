@@ -69,7 +69,7 @@ async function addFile(rawName: string) {
     doc: "",
     extensions: [...sharedExtensions, typstFilePath.of(path)],
   });
-  switchTab(path); // path change triggers the plugin to compile
+  switchTab(path);
 }
 
 async function removeFile(path: string) {
@@ -82,7 +82,6 @@ async function removeFile(path: string) {
     const remaining = project.files;
     switchTab(remaining[Math.max(0, idx - 1)]);
   } else {
-    await project.compile();
     renderTabs();
   }
 }

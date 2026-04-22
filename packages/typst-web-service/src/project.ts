@@ -4,6 +4,7 @@ import type {
   LspHover,
   LspPosition,
 } from "./analyzer-types.js";
+import { CompileScheduler } from "./compile-scheduler.js";
 import type { CompileResult, TypstCompiler } from "./compiler.js";
 import {
   normalizePath,
@@ -28,6 +29,18 @@ export interface TypstProjectOptions {
    * and project VFS use the raw paths unchanged.
    */
   analyzerUriRoot?: string;
+  /**
+   * Idle time (ms) after the last VFS mutation before an auto-compile fires.
+   * Default: 0 — compile fires on the next macrotask. Set higher (e.g. 150) to
+   * coalesce rapid edits.
+   */
+  compileDebounceMs?: number;
+  /**
+   * Maximum time (ms) between auto-compiles during sustained mutation bursts.
+   * Guarantees progress while the user is actively typing. Default: 0 (no
+   * throttle — only debounce applies).
+   */
+  compileThrottleMs?: number;
 }
 
 const DEFAULT_ENTRY = "/main.typ";
@@ -69,6 +82,7 @@ export class TypstProject {
   /** Latest content observed for a path. Read-through source for `getText`. Per-sink dedup lives in the compiler and analyzer. */
   private readonly contentByPath = new Map<Path, string>();
   private readonly compileListeners = new Set<CompileListener>();
+  private readonly scheduler: CompileScheduler;
   private compileVersion = 0;
   private _lastResult: CompileResult | undefined;
   private _entry: Path;
@@ -81,6 +95,23 @@ export class TypstProject {
       options.analyzerUriRoot ?? DEFAULT_ROOT,
     );
     this._entry = normalizePath(options.entry ?? DEFAULT_ENTRY);
+    this.scheduler = new CompileScheduler({
+      debounceDelay: options.compileDebounceMs,
+      throttleDelay: options.compileThrottleMs,
+    });
+  }
+
+  /**
+   * Schedule an auto-compile after VFS mutations. Coalesces rapid calls via
+   * the configured debounce/throttle. Errors surface through `onCompile`
+   * listeners via a synthetic diagnostic; callers awaiting a specific compile
+   * should call `compile()` directly.
+   */
+  private scheduleCompile(): void {
+    if (this.destroyed) return;
+    this.scheduler.schedule(() => {
+      this.compile().catch((err) => console.error("[typst]", err));
+    });
   }
 
   /** Current entry file path. Assign to change the sticky entry used by subsequent `compile()` calls. */
@@ -89,7 +120,10 @@ export class TypstProject {
   }
 
   set entry(path: Path) {
-    this._entry = normalizePath(path);
+    const next = normalizePath(path);
+    if (next === this._entry) return;
+    this._entry = next;
+    this.scheduleCompile();
   }
 
   /** Whether an analyzer is attached. */
@@ -143,19 +177,25 @@ export class TypstProject {
       );
     }
     await Promise.all(ops);
+    this.scheduleCompile();
   }
 
   /**
    * Add or overwrite a JSON file. Compiler-only — the analyzer does not track
    * data files.
    */
-  setJson(path: Path, value: unknown): Promise<void> {
-    return this.compiler.setJson(normalizePath(path), value);
+  async setJson(path: Path, value: unknown): Promise<void> {
+    await this.compiler.setJson(normalizePath(path), value);
+    this.scheduleCompile();
   }
 
   /** Add or overwrite a binary file. Compiler-only. */
-  setBinary(path: Path, content: ArrayBuffer | ArrayBufferView): Promise<void> {
-    return this.compiler.setBinary(normalizePath(path), content);
+  async setBinary(
+    path: Path,
+    content: ArrayBuffer | ArrayBufferView,
+  ): Promise<void> {
+    await this.compiler.setBinary(normalizePath(path), content);
+    this.scheduleCompile();
   }
 
   /**
@@ -178,6 +218,7 @@ export class TypstProject {
       this.compiler.setMany(normalized),
       this.analyzer?.didChangeMany(analyzerDocs) ?? Promise.resolve(),
     ]);
+    this.scheduleCompile();
   }
 
   /**
@@ -195,6 +236,7 @@ export class TypstProject {
       );
     }
     await Promise.all(ops);
+    this.scheduleCompile();
   }
 
   /** Clear all files from both compiler VFS and analyzer document set. */
@@ -210,6 +252,7 @@ export class TypstProject {
         ? this.analyzer.didCloseMany(uris)
         : Promise.resolve();
     await Promise.all([compilerOp, analyzerOp]);
+    this.scheduleCompile();
   }
 
   /**
@@ -239,8 +282,13 @@ export class TypstProject {
    * callers and listeners always receive a `CompileResult`. Listeners are
    * notified only for the most recent compile — results from an earlier call
    * that resolves after a later one are suppressed.
+   *
+   * VFS mutations (`setText`, `remove`, etc.) auto-schedule a debounced
+   * compile; call this directly only when you need an awaitable handle on the
+   * result (e.g., to flush before rendering to PDF).
    */
   async compile(): Promise<CompileResult> {
+    this.scheduler.cancel();
     const version = ++this.compileVersion;
     let result: CompileResult;
     try {
@@ -329,6 +377,7 @@ export class TypstProject {
   destroy(): void {
     if (this.destroyed) return;
     this.destroyed = true;
+    this.scheduler.cancel();
     this.compileListeners.clear();
     this.trackedTextPaths.clear();
     this.contentByPath.clear();

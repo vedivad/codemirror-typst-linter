@@ -47,14 +47,21 @@ function waitFor(fn: () => boolean, timeout = 1000): Promise<void> {
 }
 
 describe("CompileSyncPlugin", () => {
-  it("pushes the editor's content to the project before compiling", async () => {
+  it("pushes the editor's content to the project on mount", async () => {
     const project = mockProject();
     const view = mockView("hello");
     new CompileSyncPlugin({ project: project as any }, view);
 
-    await waitFor(() => project.compile.mock.calls.length > 0);
+    await waitFor(() => project.setText.mock.calls.length > 0);
     expect(project.setText).toHaveBeenCalledWith("/main.typ", "hello");
-    expect(project.setText).toHaveBeenCalledBefore(project.compile);
+  });
+
+  it("does not call compile() directly — the project auto-schedules", () => {
+    const project = mockProject();
+    const view = mockView("x");
+    new CompileSyncPlugin({ project: project as any }, view);
+
+    expect(project.compile).not.toHaveBeenCalled();
   });
 
   it("does not subscribe to compile events", () => {

@@ -68,7 +68,12 @@ const [compiler, renderer, formatter, analyzer] = await Promise.all([
   TypstAnalyzer.create({ wasmUrl: tinymistWasmUrl }),
 ]);
 
-const project = new TypstProject({ compiler, analyzer });
+const project = new TypstProject({
+  compiler,
+  analyzer,
+  compileDebounceMs: 300,
+  compileThrottleMs: 2000,
+});
 
 project.onCompile(async (result) => {
   if (result.vector) {
@@ -79,8 +84,6 @@ project.onCompile(async (result) => {
 
 const typstExtensions = await createTypstExtensions({
   project,
-  debounceDelay: 300,
-  throttleDelay: 2000,
   formatter: { instance: formatter, formatOnSave: true },
   highlighting: { theme: "dark" },
 });
@@ -115,17 +118,22 @@ const states = Object.fromEntries(
 
 ## Compile timing
 
-`createTypstExtensions` watches the editor and triggers `project.compile()` on doc or path changes.
+`TypstProject` auto-compiles after every VFS mutation (`setText`, `setMany`, `remove`, `clear`, entry change). The editor plugin only mirrors CM edits into `setText`; the project owns the compile schedule. Configure it once per project:
 
 ```ts
-debounceDelay: 300,  // wait 300ms after typing stops
-throttleDelay: 2000, // force a compile at least every 2s during continuous typing
+const project = new TypstProject({
+  compiler,
+  compileDebounceMs: 300, // wait 300ms after the last mutation
+  compileThrottleMs: 2000, // force a compile at least every 2s during sustained typing
+});
 ```
 
-| Option          | Default  | Behavior                                                                                                      |
-| --------------- | -------- | ------------------------------------------------------------------------------------------------------------- |
-| `debounceDelay` | `0`      | Debounce — resets on every keystroke, fires once typing pauses. `0` means compile immediately on each change. |
-| `throttleDelay` | disabled | Throttle — forces a compile during continuous typing. Only effective when `debounceDelay > 0`.                |
+| Option              | Default | Behavior                                                                                                   |
+| ------------------- | ------- | ---------------------------------------------------------------------------------------------------------- |
+| `compileDebounceMs` | `0`     | Debounce — resets on every mutation, fires once mutations pause. `0` means compile on the next macrotask.  |
+| `compileThrottleMs` | `0`     | Throttle — forces a compile during sustained mutation bursts. Only effective when `compileDebounceMs` > 0. |
+
+Call `await project.compile()` directly when you need a specific result right now — it flushes any pending scheduled compile and returns the fresh result.
 
 ## LSP analysis
 
@@ -154,8 +162,8 @@ formatter: {
 
 `createTypstExtensions` composes two view plugins. Use them directly for custom setups:
 
-- **`createTypstCompileSync({ project, debounceDelay?, throttleDelay? })`** — mirrors the editor's content into the project's VFS and triggers `project.compile()` on changes. Use on its own if you render diagnostics yourself.
-- **`createTypstDiagnostics({ project })`** — subscribes to `project.onCompile` and dispatches diagnostics for the active file. Use on its own if you drive compiles outside the editor (e.g. a "Compile" button).
+- **`createTypstCompileSync({ project })`** — mirrors the editor's content into the project's VFS on mount and on every change. The project auto-schedules the compile. Use on its own if you render diagnostics yourself.
+- **`createTypstDiagnostics({ project })`** — subscribes to `project.onCompile` and dispatches diagnostics for the active file. Use on its own if you drive VFS updates outside the editor (e.g. a Yjs observer).
 
 ```ts
 import {
@@ -165,7 +173,7 @@ import {
 } from "@vedivad/codemirror-typst";
 
 const extensions = [
-  createTypstCompileSync({ project, debounceDelay: 300 }),
+  createTypstCompileSync({ project }),
   createTypstDiagnostics({ project }),
   typstFilePath.of("/main.typ"),
 ];

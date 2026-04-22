@@ -84,3 +84,106 @@ describe("TypstProject#destroy", () => {
     expect(project.lastResult).toBeUndefined();
   });
 });
+
+function waitForCompile(
+  compiler: TypstCompiler,
+  minCalls: number,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const start = Date.now();
+    const check = () => {
+      const calls = (compiler.compile as any).mock.calls.length;
+      if (calls >= minCalls) return resolve();
+      if (Date.now() - start > 1000)
+        return reject(new Error(`timeout: ${calls}/${minCalls} compiles`));
+      setTimeout(check, 5);
+    };
+    check();
+  });
+}
+
+describe("TypstProject auto-compile on VFS mutation", () => {
+  it("schedules a compile after setText", async () => {
+    const compiler = mockCompiler();
+    const project = new TypstProject({ compiler });
+    await project.setText("/main.typ", "hello");
+    await waitForCompile(compiler, 1);
+    expect(compiler.compile).toHaveBeenCalledTimes(1);
+  });
+
+  it("schedules exactly one compile for a batch setMany", async () => {
+    const compiler = mockCompiler();
+    const project = new TypstProject({ compiler });
+    await project.setMany({
+      "/main.typ": "a",
+      "/util.typ": "b",
+      "/readme.typ": "c",
+    });
+    await waitForCompile(compiler, 1);
+    // Let any extraneous scheduled compiles flush.
+    await new Promise((r) => setTimeout(r, 20));
+    expect(compiler.compile).toHaveBeenCalledTimes(1);
+  });
+
+  it("schedules a compile after remove", async () => {
+    const compiler = mockCompiler();
+    const project = new TypstProject({ compiler });
+    await project.setText("/main.typ", "x");
+    await waitForCompile(compiler, 1);
+    await project.remove("/main.typ");
+    await waitForCompile(compiler, 2);
+    expect(compiler.compile).toHaveBeenCalledTimes(2);
+  });
+
+  it("schedules a compile after clear", async () => {
+    const compiler = mockCompiler();
+    const project = new TypstProject({ compiler });
+    await project.setText("/main.typ", "x");
+    await waitForCompile(compiler, 1);
+    await project.clear();
+    await waitForCompile(compiler, 2);
+    expect(compiler.compile).toHaveBeenCalledTimes(2);
+  });
+
+  it("schedules a compile when the entry changes", async () => {
+    const compiler = mockCompiler();
+    const project = new TypstProject({ compiler, entry: "/main.typ" });
+    project.entry = "/other.typ";
+    await waitForCompile(compiler, 1);
+    expect(compiler.compile).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not schedule when setting the entry to the same path", async () => {
+    const compiler = mockCompiler();
+    const project = new TypstProject({ compiler, entry: "/main.typ" });
+    project.entry = "/main.typ";
+    await new Promise((r) => setTimeout(r, 20));
+    expect(compiler.compile).not.toHaveBeenCalled();
+  });
+
+  it("compile() cancels any pending scheduled compile", async () => {
+    const compiler = mockCompiler();
+    const project = new TypstProject({
+      compiler,
+      compileDebounceMs: 100,
+    });
+    await project.setText("/main.typ", "x");
+    // Pending compile is 100ms out; flush it by calling compile() directly.
+    await project.compile();
+    // Wait long enough that the original debounced compile would have fired.
+    await new Promise((r) => setTimeout(r, 150));
+    expect(compiler.compile).toHaveBeenCalledTimes(1);
+  });
+
+  it("destroy() cancels pending scheduled compiles", async () => {
+    const compiler = mockCompiler();
+    const project = new TypstProject({
+      compiler,
+      compileDebounceMs: 50,
+    });
+    await project.setText("/main.typ", "x");
+    project.destroy();
+    await new Promise((r) => setTimeout(r, 100));
+    expect(compiler.compile).not.toHaveBeenCalled();
+  });
+});
