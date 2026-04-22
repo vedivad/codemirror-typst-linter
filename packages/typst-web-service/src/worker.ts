@@ -25,6 +25,11 @@ class CompilerWorker {
     this.packageRegistry = new FetchPackageRegistry(this.accessModel);
   }
 
+  private ensureCompiler(): TypstCompiler {
+    if (!this.compiler) throw new Error("Compiler not initialized");
+    return this.compiler;
+  }
+
   async init(
     wasmUrl: string,
     fontUrls: string[],
@@ -48,8 +53,7 @@ class CompilerWorker {
   async compile(
     entry?: string,
   ): Promise<{ diagnostics: DiagnosticMessage[]; vector?: Uint8Array }> {
-    if (!this.compiler) throw new Error("Compiler not initialized");
-    const result = await this.compiler.compile({
+    const result = await this.ensureCompiler().compile({
       mainFilePath: entry ?? MAIN_FILE,
       diagnostics: "full",
     });
@@ -86,8 +90,7 @@ class CompilerWorker {
   }
 
   async compilePdf(entry?: string): Promise<Uint8Array> {
-    if (!this.compiler) throw new Error("Compiler not initialized");
-    const result = await this.compiler.compile({
+    const result = await this.ensureCompiler().compile({
       mainFilePath: entry ?? MAIN_FILE,
       format: CompileFormatEnum.pdf,
       diagnostics: "none",
@@ -99,25 +102,22 @@ class CompilerWorker {
   }
 
   mapShadow(path: string, content: Uint8Array): void {
-    if (!this.compiler) throw new Error("Compiler not initialized");
-    this.compiler.mapShadow(path, content);
+    this.ensureCompiler().mapShadow(path, content);
   }
 
   mapShadowMany(files: Record<string, Uint8Array>): void {
-    if (!this.compiler) throw new Error("Compiler not initialized");
+    const compiler = this.ensureCompiler();
     for (const [path, content] of Object.entries(files)) {
-      this.compiler.mapShadow(path, content);
+      compiler.mapShadow(path, content);
     }
   }
 
   unmapShadow(path: string): void {
-    if (!this.compiler) throw new Error("Compiler not initialized");
-    this.compiler.unmapShadow(path);
+    this.ensureCompiler().unmapShadow(path);
   }
 
   resetShadow(): void {
-    if (!this.compiler) throw new Error("Compiler not initialized");
-    this.compiler.resetShadow();
+    this.ensureCompiler().resetShadow();
   }
 
   destroy(): void {

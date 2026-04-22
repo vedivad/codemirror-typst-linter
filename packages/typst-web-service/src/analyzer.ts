@@ -62,8 +62,10 @@ export class TypstAnalyzer {
   private readonly proxy: Comlink.Remote<AnalyzerWorkerAPI>;
   private readonly worker: Worker;
   private versionCounter = 0;
-  private readonly openedUris = new Set<string>();
-  /** Last content pushed to the worker per URI. Drives own-RPC dedup. */
+  /**
+   * Last content pushed to the worker per URI. Presence is the source of
+   * truth for "is this URI opened on the worker?"; value drives own-RPC dedup.
+   */
   private readonly content = new Map<string, string>();
 
   private constructor(
@@ -88,14 +90,12 @@ export class TypstAnalyzer {
   }
 
   async didOpen(uri: string, content: string): Promise<void> {
-    this.openedUris.add(uri);
     this.content.set(uri, content);
     await this.proxy.didOpen(uri, content);
   }
 
   async didClose(uri: string): Promise<void> {
-    if (!this.openedUris.delete(uri)) return;
-    this.content.delete(uri);
+    if (!this.content.delete(uri)) return;
     await this.proxy.didClose(uri);
   }
 
@@ -104,7 +104,7 @@ export class TypstAnalyzer {
    * content matches what the worker last saw.
    */
   async didChange(uri: string, content: string): Promise<void> {
-    if (!this.openedUris.has(uri)) {
+    if (!this.content.has(uri)) {
       await this.didOpen(uri, content);
       return;
     }
@@ -124,9 +124,8 @@ export class TypstAnalyzer {
     const changes: Array<{ uri: string; version: number; content: string }> =
       [];
     for (const [uri, content] of Object.entries(docs)) {
-      if (!this.openedUris.has(uri)) {
+      if (!this.content.has(uri)) {
         opens.push({ uri, content });
-        this.openedUris.add(uri);
         this.content.set(uri, content);
       } else if (this.content.get(uri) !== content) {
         changes.push({ uri, version: ++this.versionCounter, content });
@@ -144,10 +143,7 @@ export class TypstAnalyzer {
   async didCloseMany(uris: string[]): Promise<void> {
     const toClose: string[] = [];
     for (const uri of uris) {
-      if (this.openedUris.delete(uri)) {
-        this.content.delete(uri);
-        toClose.push(uri);
-      }
+      if (this.content.delete(uri)) toClose.push(uri);
     }
     if (toClose.length === 0) return;
     await this.proxy.didCloseMany(toClose);
@@ -164,11 +160,10 @@ export class TypstAnalyzer {
     content: string,
     position: LspPosition,
   ): Promise<LspCompletionResponse> {
-    if (this.openedUris.has(uri) && this.content.get(uri) === content) {
+    if (this.content.get(uri) === content) {
       return this.proxy.completion(uri, position);
     }
-    const isOpen = this.openedUris.has(uri);
-    if (!isOpen) this.openedUris.add(uri);
+    const isOpen = this.content.has(uri);
     this.content.set(uri, content);
     const version = ++this.versionCounter;
     return this.proxy.completionWithDoc(
@@ -191,11 +186,10 @@ export class TypstAnalyzer {
     content: string,
     position: LspPosition,
   ): Promise<LspHover | null> {
-    if (this.openedUris.has(uri) && this.content.get(uri) === content) {
+    if (this.content.get(uri) === content) {
       return this.proxy.hover(uri, position);
     }
-    const isOpen = this.openedUris.has(uri);
-    if (!isOpen) this.openedUris.add(uri);
+    const isOpen = this.content.has(uri);
     this.content.set(uri, content);
     const version = ++this.versionCounter;
     return this.proxy.hoverWithDoc(
