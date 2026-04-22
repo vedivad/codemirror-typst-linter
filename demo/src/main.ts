@@ -29,7 +29,11 @@ const [formatter, compiler, renderer, analyzer] = await Promise.all([
   TypstAnalyzer.create({ wasmUrl: tinymistWasmUrl }),
 ]);
 
-const project = new TypstProject({ compiler, analyzer });
+const project = new TypstProject({
+  compiler,
+  analyzer,
+  autoCompile: { debounceMs: 100, maxWaitMs: 300 },
+});
 await project.setMany(files);
 
 // --- Editor state ---

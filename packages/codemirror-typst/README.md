@@ -71,8 +71,7 @@ const [compiler, renderer, formatter, analyzer] = await Promise.all([
 const project = new TypstProject({
   compiler,
   analyzer,
-  compileDebounceMs: 300,
-  compileThrottleMs: 2000,
+  autoCompile: { debounceMs: 300, maxWaitMs: 2000 },
 });
 
 project.onCompile(async (result) => {
@@ -123,15 +122,17 @@ const states = Object.fromEntries(
 ```ts
 const project = new TypstProject({
   compiler,
-  compileDebounceMs: 300, // wait 300ms after the last mutation
-  compileThrottleMs: 2000, // force a compile at least every 2s during sustained typing
+  autoCompile: {
+    debounceMs: 300, // wait 300ms after the last mutation
+    maxWaitMs: 2000, // force a compile at least every 2s during sustained typing
+  },
 });
 ```
 
-| Option              | Default | Behavior                                                                                                   |
-| ------------------- | ------- | ---------------------------------------------------------------------------------------------------------- |
-| `compileDebounceMs` | `0`     | Debounce — resets on every mutation, fires once mutations pause. `0` means compile on the next macrotask.  |
-| `compileThrottleMs` | `0`     | Throttle — forces a compile during sustained mutation bursts. Only effective when `compileDebounceMs` > 0. |
+| Option                   | Default | Behavior                                                                                                  |
+| ------------------------ | ------- | --------------------------------------------------------------------------------------------------------- |
+| `autoCompile.debounceMs` | `0`     | Debounce — resets on every mutation, fires once mutations pause. `0` means compile on the next macrotask. |
+| `autoCompile.maxWaitMs`  | `0`     | Max-wait cap — forces a compile during sustained mutation bursts. Only effective when `debounceMs` > 0.   |
 
 Call `await project.compile()` directly when you need a specific result right now — it flushes any pending scheduled compile and returns the fresh result.
 

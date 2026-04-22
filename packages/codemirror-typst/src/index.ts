@@ -63,8 +63,8 @@ export interface TypstExtensionsOptions {
    * Project that owns the VFS and (optionally) the analyzer. Construct one with
    * `new TypstProject({ compiler, analyzer })` and share it across editors that
    * should see the same files. Subscribe to compile results with
-   * `project.onCompile(listener)`. Configure compile debounce/throttle via
-   * `compileDebounceMs` / `compileThrottleMs` on the project itself.
+   * `project.onCompile(listener)`. Configure auto-compile scheduling via the
+   * `autoCompile` option on the project itself.
    */
   project: TypstProject;
   /** Code formatter. Omit to disable. */

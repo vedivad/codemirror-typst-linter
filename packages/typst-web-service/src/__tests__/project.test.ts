@@ -199,7 +199,7 @@ describe("TypstProject auto-compile on VFS mutation", () => {
     const compiler = mockCompiler();
     const project = new TypstProject({
       compiler,
-      compileDebounceMs: 100,
+      autoCompile: { debounceMs: 100 },
     });
     await project.setText("/main.typ", "x");
     // Pending compile is 100ms out; flush it by calling compile() directly.
@@ -213,7 +213,7 @@ describe("TypstProject auto-compile on VFS mutation", () => {
     const compiler = mockCompiler();
     const project = new TypstProject({
       compiler,
-      compileDebounceMs: 50,
+      autoCompile: { debounceMs: 50 },
     });
     await project.setText("/main.typ", "x");
     project.destroy();

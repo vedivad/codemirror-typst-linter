@@ -56,10 +56,7 @@ export class TypstCompiler {
   /** Last text content pushed per path. Drives own-RPC dedup. Invalidated by binary writes. */
   private readonly content = new Map<string, string>();
 
-  private constructor(
-    worker: Worker,
-    proxy: Comlink.Remote<CompilerWorker>,
-  ) {
+  private constructor(worker: Worker, proxy: Comlink.Remote<CompilerWorker>) {
     this.worker = worker;
     this.proxy = proxy;
   }

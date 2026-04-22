@@ -37,10 +37,7 @@ export class TypstAnalyzer {
    */
   private readonly content = new Map<string, string>();
 
-  private constructor(
-    worker: Worker,
-    proxy: Comlink.Remote<AnalyzerWorker>,
-  ) {
+  private constructor(worker: Worker, proxy: Comlink.Remote<AnalyzerWorker>) {
     this.worker = worker;
     this.proxy = proxy;
   }

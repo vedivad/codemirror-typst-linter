@@ -30,17 +30,25 @@ export interface TypstProjectOptions {
    */
   analyzerUriRoot?: string;
   /**
-   * Idle time (ms) after the last VFS mutation before an auto-compile fires.
+   * Scheduling for auto-compiles after VFS mutations. Mutations debounce by
+   * `debounceMs`; `maxWaitMs` caps how long the debounce can keep deferring
+   * during sustained edits so the user still sees progress.
+   */
+  autoCompile?: AutoCompileOptions;
+}
+
+export interface AutoCompileOptions {
+  /**
+   * Idle time (ms) after the last VFS mutation before a compile fires.
    * Default: 0 — compile fires on the next macrotask. Set higher (e.g. 150) to
    * coalesce rapid edits.
    */
-  compileDebounceMs?: number;
+  debounceMs?: number;
   /**
-   * Maximum time (ms) between auto-compiles during sustained mutation bursts.
-   * Guarantees progress while the user is actively typing. Default: 0 (no
-   * throttle — only debounce applies).
+   * Maximum time (ms) the debounce is allowed to defer a compile during
+   * sustained mutation bursts. Default: 0 (no cap — pure debounce).
    */
-  compileThrottleMs?: number;
+  maxWaitMs?: number;
 }
 
 const DEFAULT_ENTRY = "/main.typ";
@@ -94,7 +102,10 @@ export class TypstProject {
   private _entry: Path;
   private destroyed = false;
 
-  private invokeListener(listener: CompileListener, result: CompileResult): void {
+  private invokeListener(
+    listener: CompileListener,
+    result: CompileResult,
+  ): void {
     try {
       listener(result);
     } catch (err) {
@@ -110,8 +121,8 @@ export class TypstProject {
     );
     this._entry = normalizePath(options.entry ?? DEFAULT_ENTRY);
     this.scheduler = new CompileScheduler({
-      debounceDelay: options.compileDebounceMs,
-      throttleDelay: options.compileThrottleMs,
+      debounceMs: options.autoCompile?.debounceMs,
+      maxWaitMs: options.autoCompile?.maxWaitMs,
     });
   }
 
