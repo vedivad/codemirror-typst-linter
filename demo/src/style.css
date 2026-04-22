@@ -184,6 +184,17 @@ header p {
   background: rgba(255, 255, 255, 0.08);
 }
 
+.new-file-input.invalid {
+  border-color: var(--danger);
+}
+
+.new-file-error {
+  color: var(--danger);
+  font-family: monospace;
+  font-size: 0.75rem;
+  padding-left: 0.3rem;
+}
+
 .new-file-confirm,
 .new-file-cancel {
   padding: 0.2rem 0.6rem;

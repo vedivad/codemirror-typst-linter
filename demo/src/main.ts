@@ -54,14 +54,15 @@ project.onCompile(async (result) => {
 
 // --- File management ---
 
-async function addFile(rawName: string) {
+type AddFileResult = { ok: true } | { ok: false; error: string };
+
+async function addFile(rawName: string): Promise<AddFileResult> {
   let path = rawName.trim();
-  if (!path) return;
+  if (!path) return { ok: false, error: "Name required" };
   if (!path.endsWith(".typ")) path += ".typ";
   if (!path.startsWith("/")) path = "/" + path;
   if (project.files.includes(path)) {
-    alert(`"${path}" already exists.`);
-    return;
+    return { ok: false, error: `"${path}" already exists` };
   }
 
   await project.setText(path, "");
@@ -70,6 +71,7 @@ async function addFile(rawName: string) {
     extensions: [...sharedExtensions, typstFilePath.of(path)],
   });
   switchTab(path);
+  return { ok: true };
 }
 
 async function removeFile(path: string) {
@@ -178,15 +180,36 @@ function showNewFileInput() {
   input.placeholder = "filename.typ";
   input.className = "new-file-input";
 
+  const errorEl = document.createElement("span");
+  errorEl.className = "new-file-error";
+  errorEl.hidden = true;
+
+  const clearError = () => {
+    input.classList.remove("invalid");
+    errorEl.hidden = true;
+    errorEl.textContent = "";
+  };
+
+  const showError = (message: string) => {
+    input.classList.add("invalid");
+    errorEl.textContent = message;
+    errorEl.hidden = false;
+  };
+
+  input.addEventListener("input", clearError);
+
   const confirmBtn = document.createElement("button");
   confirmBtn.textContent = "Add";
   confirmBtn.className = "new-file-confirm";
-  confirmBtn.onclick = () => {
-    const name = input.value;
-    if (name) {
-      addFile(name);
+  confirmBtn.onclick = async () => {
+    const result = await addFile(input.value);
+    if (result.ok) {
+      inputContainer.remove();
+    } else {
+      showError(result.error);
+      input.focus();
+      input.select();
     }
-    inputContainer.remove();
   };
 
   const cancelBtn = document.createElement("button");
@@ -197,6 +220,7 @@ function showNewFileInput() {
   inputContainer.appendChild(input);
   inputContainer.appendChild(confirmBtn);
   inputContainer.appendChild(cancelBtn);
+  inputContainer.appendChild(errorEl);
   tabsEl.appendChild(inputContainer);
 
   input.focus();
