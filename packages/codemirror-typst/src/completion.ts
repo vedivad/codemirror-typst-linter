@@ -159,7 +159,12 @@ export function typstCompletionSource(
       const result = await options.project.completion(path, source, position);
       if (!result) return null;
       return lspCompletionToCM(ctx, result);
-    } catch {
+    } catch (err) {
+      console.debug("[typst] completion request failed", {
+        path,
+        position,
+        error: err,
+      });
       return null;
     }
   };

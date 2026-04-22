@@ -42,8 +42,11 @@ export class DiagnosticsPlugin {
       .map((d) => toCMDiagnostic(view.state, d));
     try {
       view.dispatch(setDiagnostics(view.state, diagnostics));
-    } catch {
-      // View may already be replaced/destroyed.
+    } catch (err) {
+      console.debug("[typst] diagnostics dispatch skipped", {
+        path,
+        error: err,
+      });
     }
   }
 }

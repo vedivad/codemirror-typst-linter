@@ -1,5 +1,30 @@
 import { build } from "esbuild";
 import { defineConfig } from "tsup";
+import packageJson from "./package.json";
+
+function resolveDependencyVersion(name: string): string {
+  const raw = packageJson.dependencies?.[name];
+  if (!raw) {
+    throw new Error(`Missing dependency version for ${name}`);
+  }
+  const match = raw.match(/\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?/);
+  if (!match) {
+    throw new Error(`Could not derive a CDN version from ${name}: ${raw}`);
+  }
+  return match[0];
+}
+
+const typstCompilerVersion = resolveDependencyVersion(
+  "@myriaddreamin/typst-ts-web-compiler",
+);
+const typstRendererVersion = resolveDependencyVersion(
+  "@myriaddreamin/typst-ts-renderer",
+);
+
+const versionDefine = {
+  __TYPST_TS_WEB_COMPILER_VERSION__: JSON.stringify(typstCompilerVersion),
+  __TYPST_TS_RENDERER_VERSION__: JSON.stringify(typstRendererVersion),
+};
 
 const { outputFiles } = await build({
   entryPoints: ["src/worker.ts"],
@@ -32,6 +57,7 @@ export default defineConfig([
     define: {
       __WORKER_CODE__: JSON.stringify(workerCode),
       __ANALYZER_WORKER_CODE__: JSON.stringify(analyzerWorkerCode),
+      ...versionDefine,
     },
   },
   {
@@ -39,6 +65,7 @@ export default defineConfig([
     format: ["esm"],
     sourcemap: true,
     splitting: false,
+    define: versionDefine,
     noExternal: [
       "@myriaddreamin/typst.ts",
       "@myriaddreamin/typst-ts-web-compiler",
@@ -49,6 +76,7 @@ export default defineConfig([
     format: ["esm"],
     sourcemap: true,
     splitting: false,
+    define: versionDefine,
     noExternal: ["tinymist-web"],
   },
 ]);

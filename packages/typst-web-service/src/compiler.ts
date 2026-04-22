@@ -2,17 +2,19 @@ import * as Comlink from "comlink";
 import { createWorker } from "./rpc.js";
 import type { DiagnosticMessage } from "./types.js";
 
+declare const __TYPST_TS_WEB_COMPILER_VERSION__: string;
+
 interface CompilerWorkerAPI {
   init(wasmUrl: string, fontUrls: string[], packages: boolean): Promise<void>;
   compile(
     entry?: string,
   ): Promise<{ diagnostics: DiagnosticMessage[]; vector?: Uint8Array }>;
   compilePdf(entry?: string): Promise<Uint8Array>;
-  mapShadow(path: string, content: Uint8Array): void;
-  mapShadowMany(files: Record<string, Uint8Array>): void;
-  unmapShadow(path: string): void;
-  resetShadow(): void;
-  destroy(): void;
+  mapShadow(path: string, content: Uint8Array): Promise<void>;
+  mapShadowMany(files: Record<string, Uint8Array>): Promise<void>;
+  unmapShadow(path: string): Promise<void>;
+  resetShadow(): Promise<void>;
+  destroy(): Promise<void>;
 }
 
 export interface CompileResult {
@@ -49,7 +51,7 @@ const DEFAULT_FONTS = [
 ];
 
 const DEFAULT_WASM_URL =
-  "https://cdn.jsdelivr.net/npm/@myriaddreamin/typst-ts-web-compiler@0.7.0-rc2/pkg/typst_ts_web_compiler_bg.wasm";
+  `https://cdn.jsdelivr.net/npm/@myriaddreamin/typst-ts-web-compiler@${__TYPST_TS_WEB_COMPILER_VERSION__}/pkg/typst_ts_web_compiler_bg.wasm`;
 
 /**
  * Manages a Typst compiler worker. Create one instance and share it across

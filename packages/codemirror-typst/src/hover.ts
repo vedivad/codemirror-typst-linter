@@ -84,7 +84,12 @@ export function createTypstHover(options: TypstHoverOptions): Extension {
       const result = await options.project.hover(path, source, position);
       if (!result) return null;
       return lspHoverToCM(view.state, pos, result, options.highlightCode);
-    } catch {
+    } catch (err) {
+      console.debug("[typst] hover request failed", {
+        path,
+        position,
+        error: err,
+      });
       return null;
     }
   });
