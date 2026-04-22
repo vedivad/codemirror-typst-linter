@@ -1,7 +1,20 @@
+:root {
+  color-scheme: dark;
+  --bg: #141414;
+  --panel: #1d1d1d;
+  --panel-alt: #181818;
+  --border: #333;
+  --text: #ddd;
+  --muted: #888;
+  --danger: #e5534b;
+  --warning: #e09b47;
+  --info: #7ecfff;
+}
+
 body {
   margin: 0;
-  background: #1a1a2e;
-  color: #e0e0e0;
+  background: var(--bg);
+  color: var(--text);
   font-family: system-ui, sans-serif;
 }
 
@@ -13,7 +26,8 @@ body {
 
 header {
   padding: 1rem 1.5rem 0.75rem;
-  border-bottom: 1px solid #333;
+  background: var(--panel-alt);
+  border-bottom: 1px solid var(--border);
 }
 
 .header-row {
@@ -24,17 +38,15 @@ header {
 
 .export-btn {
   padding: 0.4rem 1rem;
-  background: #7ecfff;
-  color: #1a1a2e;
-  border: none;
-  border-radius: 4px;
+  background: #f3f3f3;
+  color: #111;
+  border: 1px solid #ccc;
   font-size: 0.8rem;
-  font-weight: 600;
   cursor: pointer;
 }
 
 .export-btn:hover {
-  background: #5bb8f0;
+  background: #e8e8e8;
 }
 
 .export-btn:disabled {
@@ -46,13 +58,12 @@ header h1 {
   margin: 0 0 0.25rem;
   font-size: 1.1rem;
   font-family: monospace;
-  color: #7ecfff;
 }
 
 header p {
   margin: 0;
   font-size: 0.85rem;
-  color: #888;
+  color: var(--muted);
 }
 
 .main {
@@ -72,8 +83,8 @@ header p {
 .tabs {
   display: flex;
   align-items: center;
-  background: #16213e;
-  border-bottom: 1px solid #333;
+  background: var(--panel-alt);
+  border-bottom: 1px solid var(--border);
   gap: 0;
 }
 
@@ -87,7 +98,7 @@ header p {
   padding: 0.4rem 1rem;
   background: none;
   border: none;
-  color: #888;
+  color: var(--muted);
   font-family: monospace;
   font-size: 0.8rem;
   cursor: pointer;
@@ -96,19 +107,19 @@ header p {
 }
 
 .tab:hover {
-  color: #ccc;
+  color: var(--text);
 }
 
 .tab.active {
-  color: #7ecfff;
-  border-bottom-color: #7ecfff;
+  color: #fff;
+  border-bottom-color: #fff;
 }
 
 .tab-close {
   padding: 0.4rem 0.4rem;
   background: none;
   border: none;
-  color: #666;
+  color: var(--muted);
   font-family: monospace;
   font-size: 1rem;
   cursor: pointer;
@@ -130,7 +141,7 @@ header p {
   padding: 0.4rem 0.8rem;
   background: none;
   border: none;
-  color: #666;
+  color: var(--muted);
   font-family: monospace;
   font-size: 0.9rem;
   cursor: pointer;
@@ -140,7 +151,7 @@ header p {
 }
 
 .tab-add:hover {
-  color: #7ecfff;
+  color: #fff;
 }
 
 .tab-new-file-input {
@@ -148,53 +159,48 @@ header p {
   align-items: center;
   gap: 0.3rem;
   padding: 0.3rem 0.5rem;
-  background: #16213e;
-  border-left: 1px solid #333;
+  background: var(--panel-alt);
+  border-left: 1px solid var(--border);
   margin-left: auto;
 }
 
 .new-file-input {
   padding: 0.3rem 0.5rem;
   background: rgba(255, 255, 255, 0.05);
-  border: 1px solid #444;
-  color: #e0e0e0;
+  border: 1px solid var(--border);
+  color: var(--text);
   font-family: monospace;
   font-size: 0.8rem;
-  border-radius: 2px;
   width: 120px;
 }
 
 .new-file-input::placeholder {
-  color: #666;
+  color: var(--muted);
 }
 
 .new-file-input:focus {
   outline: none;
-  border-color: #7ecfff;
-  background: rgba(126, 207, 255, 0.1);
+  border-color: var(--muted);
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .new-file-confirm,
 .new-file-cancel {
   padding: 0.2rem 0.6rem;
-  background: #333;
-  border: 1px solid #444;
-  color: #e0e0e0;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--text);
   font-family: monospace;
   font-size: 0.75rem;
   cursor: pointer;
-  border-radius: 2px;
 }
 
 .new-file-confirm:hover {
-  background: #7ecfff;
-  color: #1a1a2e;
-  border-color: #7ecfff;
+  background: #2a2a2a;
 }
 
 .new-file-cancel:hover {
-  background: #444;
-  color: #e0e0e0;
+  background: #2a2a2a;
 }
 
 /* Editor */
@@ -213,11 +219,12 @@ header p {
 
 /* Diagnostics */
 .diagnostics {
-  border-top: 1px solid #333;
+  border-top: 1px solid var(--border);
   overflow-y: auto;
   padding: 0.5rem 0.75rem;
   max-height: 120px;
   flex-shrink: 0;
+  background: var(--panel-alt);
 }
 
 .diagnostics h2 {
@@ -225,13 +232,12 @@ header p {
   font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: #888;
+  color: var(--muted);
 }
 
 .diagnostics .count {
-  background: #e5534b;
+  background: var(--danger);
   color: #fff;
-  border-radius: 8px;
   padding: 0.1em 0.5em;
   font-size: 0.75rem;
   margin-left: 0.4em;
@@ -239,7 +245,7 @@ header p {
 
 .diagnostics .empty {
   font-size: 0.8rem;
-  color: #666;
+  color: var(--muted);
 }
 .diagnostics ul {
   list-style: none;
@@ -256,8 +262,8 @@ header p {
   gap: 0.5rem;
   font-size: 0.8rem;
   padding: 0.4rem 0.5rem;
-  border-radius: 4px;
-  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border);
+  background: var(--panel);
 }
 
 .diagnostic .icon {
@@ -265,7 +271,7 @@ header p {
   line-height: 1.3;
 }
 .diagnostic .loc {
-  color: #666;
+  color: var(--muted);
   font-family: monospace;
   font-size: 0.75rem;
   flex-shrink: 0;
@@ -275,13 +281,13 @@ header p {
   word-break: break-word;
 }
 .diagnostic.error .icon {
-  color: #e5534b;
+  color: var(--danger);
 }
 .diagnostic.warning .icon {
-  color: #e09b47;
+  color: var(--warning);
 }
 .diagnostic.info .icon {
-  color: #7ecfff;
+  color: var(--info);
 }
 
 /* Hover tooltip */
@@ -316,21 +322,20 @@ header p {
 .cm-typst-hover h3 {
   margin: 0.5em 0 0.2em;
   font-size: 0.85em;
-  color: #7ecfff;
+  color: inherit;
 }
 .cm-typst-hover hr {
   border: none;
-  border-top: 1px solid #555;
+  border-top: 1px solid var(--border);
   margin: 0.4em 0;
 }
 
-/* Preview */
 .preview {
   flex: 1;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border-left: 1px solid #333;
+  border-left: 1px solid var(--border);
   background: #fff;
 }
 
@@ -338,23 +343,35 @@ header p {
   flex: 1;
   overflow: auto;
   display: flex;
-  align-items: flex-start;
-  justify-content: center;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
   padding: 1rem;
 }
 
 .preview .svg-container svg {
   max-width: 100%;
   height: auto;
+  display: block;
+}
+
+.preview .svg-page {
+  width: min(100%, 860px);
+  background: #fff;
+  border: 1px solid #ddd;
+}
+
+.preview .svg-page::before {
+  content: none;
 }
 
 .preview .error {
   padding: 1rem;
-  color: #ff6b6b;
+  color: #b42318;
   font-size: 0.8rem;
   font-family: monospace;
   white-space: pre-wrap;
-  background: #1a1a2e;
+  background: #fff;
   height: 100%;
   overflow: auto;
 }
@@ -364,7 +381,7 @@ header p {
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: #888;
+  color: #666;
   font-size: 0.85rem;
-  background: #1a1a2e;
+  background: #fff;
 }

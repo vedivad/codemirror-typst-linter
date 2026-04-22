@@ -42,8 +42,13 @@ let activeView: EditorView | null = null;
 project.onCompile(async (result) => {
   updateDiagnostics(diagnosticsEl, result.diagnostics);
   if (result.vector) {
-    const svg = await renderer.renderSvg(result.vector);
-    previewEl.innerHTML = `<div class="svg-container">${svg}</div>`;
+    const pages = await renderer.renderSvgPages(result.vector);
+    previewEl.innerHTML = `<div class="svg-container">${pages
+      .map(
+        (page) =>
+          `<div class="svg-page" data-page="${page.index + 1}">${page.svg}</div>`,
+      )
+      .join("")}</div>`;
   }
 });
 

@@ -24,8 +24,10 @@ const renderer = await TypstRenderer.create();
 await compiler.setText("/main.typ", "= Hello, Typst");
 const result = await compiler.compile();
 if (result.vector) {
-  const svg = await renderer.renderSvg(result.vector);
-  document.querySelector("#preview")!.innerHTML = svg;
+  const pages = await renderer.renderSvgPages(result.vector);
+  document.querySelector("#preview")!.innerHTML = pages
+    .map((page) => `<div class="page">${page.svg}</div>`)
+    .join("");
 }
 
 // result.diagnostics are returned in deterministic order
@@ -98,7 +100,7 @@ analyzer.destroy();
 | Class            | Runs on     | WASM loading            | Purpose                                                    |
 | ---------------- | ----------- | ----------------------- | ---------------------------------------------------------- |
 | `TypstCompiler`  | Web Worker  | CDN (automatic)         | `compile()` -> diagnostics + vector, `compilePdf()` -> PDF |
-| `TypstRenderer`  | Main thread | CDN (automatic)         | `renderSvg(vector)` -> SVG string                          |
+| `TypstRenderer`  | Main thread | CDN (automatic)         | `renderSvg(vector)` or `renderSvgPages(vector)`            |
 | `TypstFormatter` | Main thread | Bundler (static import) | `format(source)`, `formatRange(source, start, end)`        |
 | `TypstAnalyzer`  | Web Worker  | User-provided `wasmUrl` | Completion + hover via tinymist                            |
 
