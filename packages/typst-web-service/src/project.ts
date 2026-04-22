@@ -160,24 +160,29 @@ export class TypstProject {
 
   /**
    * Add or overwrite a text file. Goes to the compiler's VFS and, when an
-   * analyzer is attached, to the analyzer as a document change. The compiler
-   * and analyzer each dedup internally, so redundant calls are cheap.
+   * analyzer is attached, to the analyzer as a document change. No-op when
+   * the tracked path already has this exact content — skips both worker RPCs
+   * and the auto-scheduled compile.
    */
   async setText(path: Path, content: string): Promise<void> {
     const p = normalizePath(path);
+    if (this.hasTrackedContent(p, content)) return;
     this.trackedTextPaths.add(p);
     this.contentByPath.set(p, content);
-    const ops: Array<Promise<void>> = [this.compiler.setText(p, content)];
-    if (this.analyzer) {
-      ops.push(
-        this.analyzer.didChange(
-          pathToAnalyzerUri(p, this.analyzerUriRoot),
-          content,
-        ),
-      );
-    }
-    await Promise.all(ops);
+    await Promise.all([
+      this.compiler.setText(p, content),
+      this.analyzer?.didChange(
+        pathToAnalyzerUri(p, this.analyzerUriRoot),
+        content,
+      ) ?? Promise.resolve(),
+    ]);
     this.scheduleCompile();
+  }
+
+  private hasTrackedContent(p: Path, content: string): boolean {
+    return (
+      this.trackedTextPaths.has(p) && this.contentByPath.get(p) === content
+    );
   }
 
   /**
@@ -200,20 +205,26 @@ export class TypstProject {
 
   /**
    * Batch set multiple files. Strings route to both compiler and analyzer;
-   * Uint8Array entries go to the compiler only.
+   * Uint8Array entries go to the compiler only. Strings matching the last
+   * tracked content for their path are skipped on both sinks. Binary entries
+   * always go through (no content cache, so no dedup).
    */
   async setMany(files: Record<Path, string | Uint8Array>): Promise<void> {
     const normalized: Record<Path, string | Uint8Array> = {};
     const analyzerDocs: Record<string, string> = {};
     for (const [path, content] of Object.entries(files)) {
       const p = normalizePath(path);
-      normalized[p] = content;
-      if (typeof content === "string") {
-        this.trackedTextPaths.add(p);
-        this.contentByPath.set(p, content);
-        analyzerDocs[pathToAnalyzerUri(p, this.analyzerUriRoot)] = content;
+      if (typeof content !== "string") {
+        normalized[p] = content;
+        continue;
       }
+      if (this.hasTrackedContent(p, content)) continue;
+      this.trackedTextPaths.add(p);
+      this.contentByPath.set(p, content);
+      normalized[p] = content;
+      analyzerDocs[pathToAnalyzerUri(p, this.analyzerUriRoot)] = content;
     }
+    if (Object.keys(normalized).length === 0) return;
     await Promise.all([
       this.compiler.setMany(normalized),
       this.analyzer?.didChangeMany(analyzerDocs) ?? Promise.resolve(),

@@ -111,6 +111,17 @@ describe("TypstProject auto-compile on VFS mutation", () => {
     expect(compiler.compile).toHaveBeenCalledTimes(1);
   });
 
+  it("skips RPC and compile when setText repeats the same content", async () => {
+    const compiler = mockCompiler();
+    const project = new TypstProject({ compiler });
+    await project.setText("/main.typ", "hello");
+    await waitForCompile(compiler, 1);
+    await project.setText("/main.typ", "hello");
+    await new Promise((r) => setTimeout(r, 20));
+    expect(compiler.setText).toHaveBeenCalledTimes(1);
+    expect(compiler.compile).toHaveBeenCalledTimes(1);
+  });
+
   it("schedules exactly one compile for a batch setMany", async () => {
     const compiler = mockCompiler();
     const project = new TypstProject({ compiler });
@@ -123,6 +134,29 @@ describe("TypstProject auto-compile on VFS mutation", () => {
     // Let any extraneous scheduled compiles flush.
     await new Promise((r) => setTimeout(r, 20));
     expect(compiler.compile).toHaveBeenCalledTimes(1);
+  });
+
+  it("skips RPC and compile when setMany repeats only unchanged content", async () => {
+    const compiler = mockCompiler();
+    const project = new TypstProject({ compiler });
+    await project.setMany({ "/a.typ": "x", "/b.typ": "y" });
+    await waitForCompile(compiler, 1);
+    await project.setMany({ "/a.typ": "x", "/b.typ": "y" });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(compiler.setMany).toHaveBeenCalledTimes(1);
+    expect(compiler.compile).toHaveBeenCalledTimes(1);
+  });
+
+  it("sends only changed entries when setMany mixes old and new content", async () => {
+    const compiler = mockCompiler();
+    const project = new TypstProject({ compiler });
+    await project.setMany({ "/a.typ": "x", "/b.typ": "y" });
+    await waitForCompile(compiler, 1);
+    await project.setMany({ "/a.typ": "x", "/b.typ": "updated" });
+    await waitForCompile(compiler, 2);
+    expect(compiler.setMany).toHaveBeenNthCalledWith(2, {
+      "/b.typ": "updated",
+    });
   });
 
   it("schedules a compile after remove", async () => {
