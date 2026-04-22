@@ -2,11 +2,10 @@ import { build } from "esbuild";
 import { defineConfig } from "tsup";
 import packageJson from "./package.json";
 
-function resolveDependencyVersion(name: string): string {
-  const raw = packageJson.dependencies?.[name];
-  if (!raw) {
-    throw new Error(`Missing dependency version for ${name}`);
-  }
+function resolveDependencyVersion(
+  name: keyof typeof packageJson.dependencies,
+): string {
+  const raw = packageJson.dependencies[name];
   const match = raw.match(/\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?/);
   if (!match) {
     throw new Error(`Could not derive a CDN version from ${name}: ${raw}`);
