@@ -3,7 +3,7 @@ declare const __WORKER_CODE__: string;
 declare const __ANALYZER_WORKER_CODE__: string;
 
 /** Create a Worker from an inlined code string, auto-revoking the blob URL on terminate. */
-export function createBlobWorker(code: string): Worker {
+function createBlobWorker(code: string): Worker {
   const blob = new Blob([code], { type: "application/javascript" });
   const url = URL.createObjectURL(blob);
   const worker = new Worker(url);

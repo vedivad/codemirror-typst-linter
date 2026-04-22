@@ -69,7 +69,7 @@ export function createTypstHover(options: TypstHoverOptions): Extension {
   return hoverTooltip(async (view, pos): Promise<Tooltip | null> => {
     // If a lint diagnostic covers this position, let the lint tooltip handle it.
     let hasDiagnostic = false;
-    forEachDiagnostic(view.state, (d, from, to) => {
+    forEachDiagnostic(view.state, (_d, from, to) => {
       if (pos >= from && pos <= to) hasDiagnostic = true;
     });
     if (hasDiagnostic) return null;

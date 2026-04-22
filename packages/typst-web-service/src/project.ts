@@ -94,6 +94,14 @@ export class TypstProject {
   private _entry: Path;
   private destroyed = false;
 
+  private invokeListener(listener: CompileListener, result: CompileResult): void {
+    try {
+      listener(result);
+    } catch (err) {
+      console.error("[typst] compile listener threw:", err);
+    }
+  }
+
   constructor(options: TypstProjectOptions) {
     this.compiler = options.compiler;
     this.analyzer = options.analyzer;
@@ -269,11 +277,7 @@ export class TypstProject {
   onCompile(listener: CompileListener): () => void {
     this.compileListeners.add(listener);
     if (this._lastResult !== undefined) {
-      try {
-        listener(this._lastResult);
-      } catch (err) {
-        console.error("[typst] compile listener threw:", err);
-      }
+      this.invokeListener(listener, this._lastResult);
     }
     return () => {
       this.compileListeners.delete(listener);
@@ -310,11 +314,7 @@ export class TypstProject {
     if (version === this.compileVersion) {
       this._lastResult = result;
       for (const listener of this.compileListeners) {
-        try {
-          listener(result);
-        } catch (err) {
-          console.error("[typst] compile listener threw:", err);
-        }
+        this.invokeListener(listener, result);
       }
     }
     return result;

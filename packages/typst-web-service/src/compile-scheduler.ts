@@ -1,4 +1,4 @@
-export interface CompileSchedulerOptions {
+interface CompileSchedulerOptions {
   /** Minimum idle time (ms) after the last request before firing. Default: 0. */
   debounceDelay?: number;
   /**
