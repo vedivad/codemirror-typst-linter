@@ -18,6 +18,7 @@ export interface DiagnosticsPluginOptions {
 export class DiagnosticsPlugin {
   private readonly unsubscribe: () => void;
   private view: EditorView;
+  private destroyed = false;
 
   constructor(options: DiagnosticsPluginOptions, view: EditorView) {
     this.view = view;
@@ -31,23 +32,24 @@ export class DiagnosticsPlugin {
   }
 
   destroy(): void {
+    this.destroyed = true;
     this.unsubscribe();
   }
 
   private applyDiagnostics(result: CompileResult): void {
-    const view = this.view;
-    const path = view.state.facet(typstFilePath);
-    const diagnostics = result.diagnostics
-      .filter((d) => d.path === path)
-      .map((d) => toCMDiagnostic(view.state, d));
-    try {
+    // project.onCompile replays the cached result synchronously on subscribe,
+    // which during tab switches means we'd dispatch while the new EditorView
+    // is still being constructed. Defer to a microtask so the current update
+    // unwinds first.
+    queueMicrotask(() => {
+      if (this.destroyed) return;
+      const view = this.view;
+      const path = view.state.facet(typstFilePath);
+      const diagnostics = result.diagnostics
+        .filter((d) => d.path === path)
+        .map((d) => toCMDiagnostic(view.state, d));
       view.dispatch(setDiagnostics(view.state, diagnostics));
-    } catch (err) {
-      console.debug("[typst] diagnostics dispatch skipped", {
-        path,
-        error: err,
-      });
-    }
+    });
   }
 }
 

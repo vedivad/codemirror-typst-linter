@@ -133,6 +133,7 @@ describe("DiagnosticsPlugin", () => {
       ],
     });
 
+    await waitFor(() => view.dispatch.mock.calls.length > before);
     expect(view.dispatch.mock.calls.length).toBe(before + 1);
   });
 });
