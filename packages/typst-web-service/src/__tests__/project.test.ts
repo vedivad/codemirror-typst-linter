@@ -221,3 +221,36 @@ describe("TypstProject auto-compile on VFS mutation", () => {
     expect(compiler.compile).not.toHaveBeenCalled();
   });
 });
+
+describe("TypstProject synthetic error diagnostics", () => {
+  it("spreads worker-crash errors across every tracked text path", async () => {
+    const compiler = mockCompiler();
+    (compiler.compile as any).mockRejectedValue(new Error("worker boom"));
+    const project = new TypstProject({ compiler });
+    // Seed tracked files without triggering the failing compile yet.
+    await project.setMany({
+      "/main.typ": "x",
+      "/util.typ": "y",
+      "/readme.typ": "z",
+    });
+    // setMany auto-schedules — wait for that to fail through onCompile.
+    const received: Array<{ diagnostics: any[] }> = [];
+    project.onCompile((r) => received.push(r));
+    const result = await project.compile();
+    expect(result.diagnostics).toHaveLength(3);
+    const paths = new Set(result.diagnostics.map((d) => d.path));
+    expect(paths).toEqual(new Set(["/main.typ", "/util.typ", "/readme.typ"]));
+    expect(result.diagnostics.every((d) => d.message === "worker boom")).toBe(
+      true,
+    );
+  });
+
+  it("falls back to the entry when no files are tracked", async () => {
+    const compiler = mockCompiler();
+    (compiler.compile as any).mockRejectedValue(new Error("boom"));
+    const project = new TypstProject({ compiler, entry: "/main.typ" });
+    const result = await project.compile();
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].path).toBe("/main.typ");
+  });
+});

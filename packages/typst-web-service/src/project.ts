@@ -60,17 +60,19 @@ const DEFAULT_ROOT = "/project";
  */
 export type CompileListener = (result: CompileResult) => void;
 
-function errorAsCompileResult(err: unknown, path: string): CompileResult {
+function errorAsCompileResult(
+  err: unknown,
+  paths: readonly string[],
+): CompileResult {
+  const message = err instanceof Error ? err.message : String(err);
   return {
-    diagnostics: [
-      {
-        package: "",
-        path,
-        severity: "Error",
-        range: { startLine: 0, startCol: 0, endLine: 0, endCol: 1 },
-        message: err instanceof Error ? err.message : String(err),
-      },
-    ],
+    diagnostics: paths.map((path) => ({
+      package: "",
+      path,
+      severity: "Error",
+      range: { startLine: 0, startCol: 0, endLine: 0, endCol: 1 },
+      message,
+    })),
   };
 }
 
@@ -78,8 +80,12 @@ export class TypstProject {
   private readonly compiler: TypstCompiler;
   private readonly analyzer?: TypstAnalyzer;
   private readonly analyzerUriRoot: string;
-  private readonly trackedTextPaths = new Set<Path>();
-  /** Latest content observed for a path. Read-through source for `getText`. Per-sink dedup lives in the compiler and analyzer. */
+  /**
+   * Tracked text files: path → latest content observed. Presence in this map
+   * is the source of truth for "is this a tracked text file?"; insertion
+   * order drives the `files` getter. Per-sink dedup lives in the compiler and
+   * analyzer.
+   */
   private readonly contentByPath = new Map<Path, string>();
   private readonly compileListeners = new Set<CompileListener>();
   private readonly scheduler: CompileScheduler;
@@ -146,7 +152,7 @@ export class TypstProject {
    * freely without affecting project state.
    */
   get files(): Path[] {
-    return [...this.trackedTextPaths];
+    return [...this.contentByPath.keys()];
   }
 
   /**
@@ -166,8 +172,7 @@ export class TypstProject {
    */
   async setText(path: Path, content: string): Promise<void> {
     const p = normalizePath(path);
-    if (this.hasTrackedContent(p, content)) return;
-    this.trackedTextPaths.add(p);
+    if (this.contentByPath.get(p) === content) return;
     this.contentByPath.set(p, content);
     await Promise.all([
       this.compiler.setText(p, content),
@@ -177,12 +182,6 @@ export class TypstProject {
       ) ?? Promise.resolve(),
     ]);
     this.scheduleCompile();
-  }
-
-  private hasTrackedContent(p: Path, content: string): boolean {
-    return (
-      this.trackedTextPaths.has(p) && this.contentByPath.get(p) === content
-    );
   }
 
   /**
@@ -218,8 +217,7 @@ export class TypstProject {
         normalized[p] = content;
         continue;
       }
-      if (this.hasTrackedContent(p, content)) continue;
-      this.trackedTextPaths.add(p);
+      if (this.contentByPath.get(p) === content) continue;
       this.contentByPath.set(p, content);
       normalized[p] = content;
       analyzerDocs[pathToAnalyzerUri(p, this.analyzerUriRoot)] = content;
@@ -238,31 +236,26 @@ export class TypstProject {
    */
   async remove(path: Path): Promise<void> {
     const p = normalizePath(path);
-    const wasText = this.trackedTextPaths.delete(p);
-    this.contentByPath.delete(p);
-    const ops: Array<Promise<void>> = [this.compiler.remove(p)];
-    if (this.analyzer && wasText) {
-      ops.push(
-        this.analyzer.didClose(pathToAnalyzerUri(p, this.analyzerUriRoot)),
-      );
-    }
-    await Promise.all(ops);
+    const wasText = this.contentByPath.delete(p);
+    await Promise.all([
+      this.compiler.remove(p),
+      wasText
+        ? this.analyzer?.didClose(pathToAnalyzerUri(p, this.analyzerUriRoot))
+        : undefined,
+    ]);
     this.scheduleCompile();
   }
 
   /** Clear all files from both compiler VFS and analyzer document set. */
   async clear(): Promise<void> {
-    const uris = Array.from(this.trackedTextPaths, (p) =>
+    const uris = Array.from(this.contentByPath.keys(), (p) =>
       pathToAnalyzerUri(p, this.analyzerUriRoot),
     );
-    this.trackedTextPaths.clear();
     this.contentByPath.clear();
-    const compilerOp = this.compiler.clear();
-    const analyzerOp =
-      this.analyzer && uris.length > 0
-        ? this.analyzer.didCloseMany(uris)
-        : Promise.resolve();
-    await Promise.all([compilerOp, analyzerOp]);
+    await Promise.all([
+      this.compiler.clear(),
+      uris.length > 0 ? this.analyzer?.didCloseMany(uris) : undefined,
+    ]);
     this.scheduleCompile();
   }
 
@@ -305,7 +298,14 @@ export class TypstProject {
     try {
       result = await this.compiler.compile(this._entry);
     } catch (err) {
-      result = errorAsCompileResult(err, this._entry);
+      // Spread the synthetic error across every tracked text path so the
+      // diagnostic is visible no matter which file the user is viewing.
+      // Falls back to the entry if nothing is tracked yet.
+      const paths =
+        this.contentByPath.size > 0
+          ? [...this.contentByPath.keys()]
+          : [this._entry];
+      result = errorAsCompileResult(err, paths);
     }
     if (version === this.compileVersion) {
       this._lastResult = result;
@@ -345,7 +345,6 @@ export class TypstProject {
   ): Promise<LspCompletionResponse> {
     const analyzer = this.requireAnalyzer("completion");
     const p = normalizePath(path);
-    this.trackedTextPaths.add(p);
     this.contentByPath.set(p, source);
     return analyzer.completion(
       pathToAnalyzerUri(p, this.analyzerUriRoot),
@@ -366,7 +365,6 @@ export class TypstProject {
   ): Promise<LspHover | null> {
     const analyzer = this.requireAnalyzer("hover");
     const p = normalizePath(path);
-    this.trackedTextPaths.add(p);
     this.contentByPath.set(p, source);
     return analyzer.hover(
       pathToAnalyzerUri(p, this.analyzerUriRoot),
@@ -390,7 +388,6 @@ export class TypstProject {
     this.destroyed = true;
     this.scheduler.cancel();
     this.compileListeners.clear();
-    this.trackedTextPaths.clear();
     this.contentByPath.clear();
     this._lastResult = undefined;
     this.compiler.destroy();
