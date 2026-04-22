@@ -19,8 +19,8 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
-    "./worker": {
-      "import": "./dist/worker.js"
+    "./compiler-worker": {
+      "import": "./dist/compiler-worker.js"
     },
     "./analyzer-worker": {
       "import": "./dist/analyzer-worker.js"

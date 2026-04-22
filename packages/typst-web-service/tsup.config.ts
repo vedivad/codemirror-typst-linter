@@ -27,7 +27,7 @@ const versionDefine = {
 };
 
 const { outputFiles } = await build({
-  entryPoints: ["src/worker.ts"],
+  entryPoints: ["src/compiler-worker.ts"],
   bundle: true,
   format: "iife",
   write: false,
@@ -61,7 +61,7 @@ export default defineConfig([
     },
   },
   {
-    entry: { worker: "src/worker.ts" },
+    entry: { "compiler-worker": "src/compiler-worker.ts" },
     format: ["esm"],
     sourcemap: true,
     splitting: false,

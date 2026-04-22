@@ -4,6 +4,7 @@ import type {
   LspHover,
   LspPosition,
 } from "./analyzer-types.js";
+import type { AnalyzerWorker } from "./analyzer-worker.js";
 import { createAnalyzerWorker } from "./rpc.js";
 
 export interface TypstAnalyzerOptions {
@@ -20,38 +21,6 @@ export interface TypstAnalyzerOptions {
   wasmUrl: string;
 }
 
-interface AnalyzerWorkerAPI {
-  init(wasmUrl: string): Promise<void>;
-  didOpen(uri: string, content: string): Promise<void>;
-  didClose(uri: string): Promise<void>;
-  didChange(uri: string, version: number, content: string): Promise<void>;
-  didChangeMany(
-    opens: Array<{ uri: string; content: string }>,
-    changes: Array<{ uri: string; version: number; content: string }>,
-  ): Promise<void>;
-  didCloseMany(uris: string[]): Promise<void>;
-  completion(
-    uri: string,
-    position: LspPosition,
-  ): Promise<LspCompletionResponse>;
-  hover(uri: string, position: LspPosition): Promise<LspHover | null>;
-  completionWithDoc(
-    uri: string,
-    version: number,
-    content: string,
-    position: LspPosition,
-    kind: "open" | "change",
-  ): Promise<LspCompletionResponse>;
-  hoverWithDoc(
-    uri: string,
-    version: number,
-    content: string,
-    position: LspPosition,
-    kind: "open" | "change",
-  ): Promise<LspHover | null>;
-  destroy(): void;
-}
-
 /**
  * Manages a tinymist language server in a Web Worker. Provides LSP-based
  * completion and hover for Typst documents.
@@ -59,7 +28,7 @@ interface AnalyzerWorkerAPI {
  *   const analyzer = await TypstAnalyzer.create({ wasmUrl: '...' });
  */
 export class TypstAnalyzer {
-  private readonly proxy: Comlink.Remote<AnalyzerWorkerAPI>;
+  private readonly proxy: Comlink.Remote<AnalyzerWorker>;
   private readonly worker: Worker;
   private versionCounter = 0;
   /**
@@ -70,7 +39,7 @@ export class TypstAnalyzer {
 
   private constructor(
     worker: Worker,
-    proxy: Comlink.Remote<AnalyzerWorkerAPI>,
+    proxy: Comlink.Remote<AnalyzerWorker>,
   ) {
     this.worker = worker;
     this.proxy = proxy;
@@ -78,7 +47,7 @@ export class TypstAnalyzer {
 
   static async create(options: TypstAnalyzerOptions): Promise<TypstAnalyzer> {
     const worker = options.worker ?? createAnalyzerWorker();
-    const proxy = Comlink.wrap<AnalyzerWorkerAPI>(worker);
+    const proxy = Comlink.wrap<AnalyzerWorker>(worker);
     const absoluteWasmUrl = new URL(options.wasmUrl, globalThis.location?.href)
       .href;
 

@@ -6,40 +6,40 @@ import type {
   LspPosition,
 } from "./analyzer-types.js";
 
-class AnalyzerWorker {
-  private server: TinymistLanguageServer | null = null;
+export class AnalyzerWorker {
+  #server: TinymistLanguageServer | null = null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- events are opaque values from WASM
-  private events: any[] = [];
+  #events: any[] = [];
 
-  private ensureServer(): TinymistLanguageServer {
-    if (!this.server) throw new Error("Analyzer not initialized");
-    return this.server;
+  #ensureServer(): TinymistLanguageServer {
+    if (!this.#server) throw new Error("Analyzer not initialized");
+    return this.#server;
   }
 
-  private notifyDidOpen(uri: string, content: string): void {
-    this.ensureServer().on_notification("textDocument/didOpen", {
+  #notifyDidOpen(uri: string, content: string): void {
+    this.#ensureServer().on_notification("textDocument/didOpen", {
       textDocument: { uri, languageId: "typst", version: 1, text: content },
     });
   }
 
-  private notifyDidClose(uri: string): void {
-    this.ensureServer().on_notification("textDocument/didClose", {
+  #notifyDidClose(uri: string): void {
+    this.#ensureServer().on_notification("textDocument/didClose", {
       textDocument: { uri },
     });
   }
 
-  private notifyDidChange(uri: string, version: number, content: string): void {
-    this.ensureServer().on_notification("textDocument/didChange", {
+  #notifyDidChange(uri: string, version: number, content: string): void {
+    this.#ensureServer().on_notification("textDocument/didChange", {
       textDocument: { uri, version },
       contentChanges: [{ text: content }],
     });
   }
 
-  private flushEvents(): void {
-    if (!this.server) return;
-    while (this.events.length > 0) {
-      for (const event of this.events.splice(0)) {
-        this.server.on_event(event);
+  #flushEvents(): void {
+    if (!this.#server) return;
+    while (this.#events.length > 0) {
+      for (const event of this.#events.splice(0)) {
+        this.#server.on_event(event);
       }
     }
   }
@@ -47,9 +47,9 @@ class AnalyzerWorker {
   async init(wasmUrl: string): Promise<void> {
     await init({ module_or_path: wasmUrl });
 
-    this.server = new TinymistLanguageServer({
+    this.#server = new TinymistLanguageServer({
       sendEvent: (event: any): void => {
-        this.events.push(event);
+        this.#events.push(event);
       },
       sendRequest: ({
         id,
@@ -58,13 +58,13 @@ class AnalyzerWorker {
         method: string;
         params: unknown;
       }): void => {
-        this.server!.on_response({ id, result: null });
+        this.#server!.on_response({ id, result: null });
       },
       sendNotification: (): void => {},
       resolveFn: () => undefined,
     });
 
-    const initResult = this.server.on_request("initialize", {
+    const initResult = this.#server.on_request("initialize", {
       capabilities: {
         textDocument: {
           completion: { completionItem: { snippetSupport: true } },
@@ -78,19 +78,19 @@ class AnalyzerWorker {
       await initResult;
     }
 
-    this.flushEvents();
-    this.server.on_notification("initialized", {});
-    this.flushEvents();
+    this.#flushEvents();
+    this.#server.on_notification("initialized", {});
+    this.#flushEvents();
   }
 
   async didOpen(uri: string, content: string): Promise<void> {
-    this.notifyDidOpen(uri, content);
-    this.flushEvents();
+    this.#notifyDidOpen(uri, content);
+    this.#flushEvents();
   }
 
   async didClose(uri: string): Promise<void> {
-    this.notifyDidClose(uri);
-    this.flushEvents();
+    this.#notifyDidClose(uri);
+    this.#flushEvents();
   }
 
   async didChange(
@@ -98,50 +98,50 @@ class AnalyzerWorker {
     version: number,
     content: string,
   ): Promise<void> {
-    this.notifyDidChange(uri, version, content);
-    this.flushEvents();
+    this.#notifyDidChange(uri, version, content);
+    this.#flushEvents();
   }
 
   async didChangeMany(
     opens: Array<{ uri: string; content: string }>,
     changes: Array<{ uri: string; version: number; content: string }>,
   ): Promise<void> {
-    this.ensureServer();
+    this.#ensureServer();
     for (const { uri, content } of opens) {
-      this.notifyDidOpen(uri, content);
+      this.#notifyDidOpen(uri, content);
     }
     for (const { uri, version, content } of changes) {
-      this.notifyDidChange(uri, version, content);
+      this.#notifyDidChange(uri, version, content);
     }
-    this.flushEvents();
+    this.#flushEvents();
   }
 
   async didCloseMany(uris: string[]): Promise<void> {
-    this.ensureServer();
+    this.#ensureServer();
     for (const uri of uris) {
-      this.notifyDidClose(uri);
+      this.#notifyDidClose(uri);
     }
-    this.flushEvents();
+    this.#flushEvents();
   }
 
   async completion(
     uri: string,
     position: LspPosition,
   ): Promise<LspCompletionResponse> {
-    const resolved = await this.ensureServer().on_request(
+    const resolved = await this.#ensureServer().on_request(
       "textDocument/completion",
       { textDocument: { uri }, position },
     );
-    this.flushEvents();
+    this.#flushEvents();
     return (resolved ?? null) as LspCompletionResponse;
   }
 
   async hover(uri: string, position: LspPosition): Promise<LspHover | null> {
-    const resolved = await this.ensureServer().on_request(
+    const resolved = await this.#ensureServer().on_request(
       "textDocument/hover",
       { textDocument: { uri }, position },
     );
-    this.flushEvents();
+    this.#flushEvents();
     return (resolved ?? null) as LspHover | null;
   }
 
@@ -152,8 +152,8 @@ class AnalyzerWorker {
     position: LspPosition,
     kind: "open" | "change",
   ): Promise<LspCompletionResponse> {
-    if (kind === "open") this.notifyDidOpen(uri, content);
-    else this.notifyDidChange(uri, version, content);
+    if (kind === "open") this.#notifyDidOpen(uri, content);
+    else this.#notifyDidChange(uri, version, content);
     return this.completion(uri, position);
   }
 
@@ -164,14 +164,14 @@ class AnalyzerWorker {
     position: LspPosition,
     kind: "open" | "change",
   ): Promise<LspHover | null> {
-    if (kind === "open") this.notifyDidOpen(uri, content);
-    else this.notifyDidChange(uri, version, content);
+    if (kind === "open") this.#notifyDidOpen(uri, content);
+    else this.#notifyDidChange(uri, version, content);
     return this.hover(uri, position);
   }
 
   destroy(): void {
-    this.server?.free();
-    this.server = null;
+    this.#server?.free();
+    this.#server = null;
   }
 }
 

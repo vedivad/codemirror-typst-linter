@@ -1,21 +1,9 @@
 import * as Comlink from "comlink";
 import { createWorker } from "./rpc.js";
 import type { DiagnosticMessage } from "./types.js";
+import type { CompilerWorker } from "./compiler-worker.js";
 
 declare const __TYPST_TS_WEB_COMPILER_VERSION__: string;
-
-interface CompilerWorkerAPI {
-  init(wasmUrl: string, fontUrls: string[], packages: boolean): Promise<void>;
-  compile(
-    entry?: string,
-  ): Promise<{ diagnostics: DiagnosticMessage[]; vector?: Uint8Array }>;
-  compilePdf(entry?: string): Promise<Uint8Array>;
-  mapShadow(path: string, content: Uint8Array): Promise<void>;
-  mapShadowMany(files: Record<string, Uint8Array>): Promise<void>;
-  unmapShadow(path: string): Promise<void>;
-  resetShadow(): Promise<void>;
-  destroy(): Promise<void>;
-}
 
 export interface CompileResult {
   diagnostics: DiagnosticMessage[];
@@ -27,7 +15,7 @@ export interface TypstCompilerOptions {
   /**
    * Explicit Worker instance. When omitted, an inlined blob worker is created automatically.
    * Use this for Vite apps to get proper source maps:
-   *   `await TypstCompiler.create({ worker: new Worker(new URL('typst-web-service/worker', import.meta.url)) })`
+   *   `await TypstCompiler.create({ worker: new Worker(new URL('typst-web-service/compiler-worker', import.meta.url)) })`
    */
   worker?: Worker;
   /**
@@ -62,7 +50,7 @@ const DEFAULT_WASM_URL = `https://cdn.jsdelivr.net/npm/@myriaddreamin/typst-ts-w
  *   await TypstCompiler.create({ worker: myWorker, fonts: [...] }) // explicit Worker + options
  */
 export class TypstCompiler {
-  private readonly proxy: Comlink.Remote<CompilerWorkerAPI>;
+  private readonly proxy: Comlink.Remote<CompilerWorker>;
   private readonly worker: Worker;
   private readonly encoder = new TextEncoder();
   /** Last text content pushed per path. Drives own-RPC dedup. Invalidated by binary writes. */
@@ -70,7 +58,7 @@ export class TypstCompiler {
 
   private constructor(
     worker: Worker,
-    proxy: Comlink.Remote<CompilerWorkerAPI>,
+    proxy: Comlink.Remote<CompilerWorker>,
   ) {
     this.worker = worker;
     this.proxy = proxy;
@@ -80,7 +68,7 @@ export class TypstCompiler {
     options: TypstCompilerOptions = {},
   ): Promise<TypstCompiler> {
     const worker = options.worker ?? createWorker();
-    const proxy = Comlink.wrap<CompilerWorkerAPI>(worker);
+    const proxy = Comlink.wrap<CompilerWorker>(worker);
 
     await proxy.init(
       options.wasmUrl ?? DEFAULT_WASM_URL,
