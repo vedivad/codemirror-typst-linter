@@ -18,7 +18,6 @@ interface CompileSchedulerOptions {
 export class CompileScheduler {
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
   private maxWaitTimer: ReturnType<typeof setTimeout> | null = null;
-  private lastFireTime = 0;
 
   constructor(private readonly options: CompileSchedulerOptions = {}) {}
 
@@ -31,23 +30,20 @@ export class CompileScheduler {
     const delay = Math.max(0, this.options.debounceMs ?? 0);
     this.debounceTimer = setTimeout(() => {
       this.debounceTimer = null;
-      this.fire(callback);
+      this.clearMaxWait();
+      callback();
     }, delay);
 
     const maxWait = this.options.maxWaitMs;
     if (maxWait != null && maxWait > 0 && !this.maxWaitTimer) {
-      const wait = Math.max(
-        0,
-        maxWait - (performance.now() - this.lastFireTime),
-      );
       this.maxWaitTimer = setTimeout(() => {
         this.maxWaitTimer = null;
         if (this.debounceTimer) {
           clearTimeout(this.debounceTimer);
           this.debounceTimer = null;
-          this.fire(callback);
+          callback();
         }
-      }, wait);
+      }, maxWait);
     }
   }
 
@@ -57,14 +53,13 @@ export class CompileScheduler {
       clearTimeout(this.debounceTimer);
       this.debounceTimer = null;
     }
+    this.clearMaxWait();
+  }
+
+  private clearMaxWait(): void {
     if (this.maxWaitTimer) {
       clearTimeout(this.maxWaitTimer);
       this.maxWaitTimer = null;
     }
-  }
-
-  private fire(callback: () => void): void {
-    this.lastFireTime = performance.now();
-    callback();
   }
 }
