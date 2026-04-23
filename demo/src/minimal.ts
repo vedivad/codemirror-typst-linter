@@ -16,7 +16,10 @@ const [compiler, renderer] = await Promise.all([
   TypstRenderer.create(),
 ]);
 
-const project = new TypstProject({ compiler });
+const project = new TypstProject({
+  compiler,
+  autoCompile: { debounceMs: 500, maxWaitMs: 1500 },
+});
 
 project.onCompile(async (result) => {
   if (result.vector) {
@@ -37,3 +40,5 @@ new EditorView({
     extensions: [basicSetup, oneDark, ...typstExtensions],
   }),
 });
+
+await project.compile(); // trigger initial compile immediately, bypass auto-compile debounce

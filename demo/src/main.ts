@@ -32,9 +32,10 @@ const [formatter, compiler, renderer, analyzer] = await Promise.all([
 const project = new TypstProject({
   compiler,
   analyzer,
-  autoCompile: { debounceMs: 100, maxWaitMs: 300 },
+  autoCompile: { debounceMs: 500, maxWaitMs: 1500 },
 });
 await project.setMany(files);
+await project.compile(); // trigger initial compile immediately, bypass auto-compile debounce
 
 // --- Editor state ---
 

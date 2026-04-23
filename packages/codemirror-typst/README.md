@@ -136,6 +136,13 @@ const project = new TypstProject({
 
 Call `await project.compile()` directly when you need a specific result right now — it flushes any pending scheduled compile and returns the fresh result.
 
+**Initial compile:** VFS mutations schedule a debounced compile, so the first render is delayed by `debounceMs`. To show initial output immediately (e.g. after `setMany`), call `compile()` explicitly:
+
+```ts
+await project.setMany({ "/main.typ": "= Hello!" });
+await project.compile(); // bypass debounce for first render
+```
+
 ## LSP analysis
 
 `TypstAnalyzer` runs a [tinymist](https://github.com/Myriad-Dreamin/tinymist) language server in a Web Worker. The `wasmUrl` option must point to the `tinymist_bg.wasm` binary from `tinymist-web` (installed automatically as a transitive dependency).
