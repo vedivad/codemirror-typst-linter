@@ -222,6 +222,52 @@ describe("TypstProject auto-compile on VFS mutation", () => {
   });
 });
 
+describe("TypstProject analyzer-only calls do not touch project state", () => {
+  const pos = { line: 0, character: 0 };
+
+  it("completion() does not cache source into contentByPath", async () => {
+    const compiler = mockCompiler();
+    const analyzer = mockAnalyzer();
+    const project = new TypstProject({ compiler, analyzer });
+    await project.completion("/main.typ", "hello", pos);
+    expect(project.files).toEqual([]);
+    expect(project.getText("/main.typ")).toBeUndefined();
+    expect(analyzer.completion).toHaveBeenCalledTimes(1);
+  });
+
+  it("hover() does not cache source into contentByPath", async () => {
+    const compiler = mockCompiler();
+    const analyzer = mockAnalyzer();
+    const project = new TypstProject({ compiler, analyzer });
+    await project.hover("/main.typ", "hello", pos);
+    expect(project.files).toEqual([]);
+    expect(project.getText("/main.typ")).toBeUndefined();
+    expect(analyzer.hover).toHaveBeenCalledTimes(1);
+  });
+
+  it("setText after completion(samePath, sameSource) still syncs the compiler", async () => {
+    const compiler = mockCompiler();
+    const analyzer = mockAnalyzer();
+    const project = new TypstProject({ compiler, analyzer });
+    await project.completion("/main.typ", "hello", pos);
+    await project.setText("/main.typ", "hello");
+    await waitForCompile(compiler, 1);
+    expect(compiler.setText).toHaveBeenCalledWith("/main.typ", "hello");
+    expect(compiler.compile).toHaveBeenCalledTimes(1);
+  });
+
+  it("setText after hover(samePath, sameSource) still syncs the compiler", async () => {
+    const compiler = mockCompiler();
+    const analyzer = mockAnalyzer();
+    const project = new TypstProject({ compiler, analyzer });
+    await project.hover("/main.typ", "hello", pos);
+    await project.setText("/main.typ", "hello");
+    await waitForCompile(compiler, 1);
+    expect(compiler.setText).toHaveBeenCalledWith("/main.typ", "hello");
+    expect(compiler.compile).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("TypstProject synthetic error diagnostics", () => {
   it("spreads worker-crash errors across every tracked text path", async () => {
     const compiler = mockCompiler();

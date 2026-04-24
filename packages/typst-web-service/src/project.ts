@@ -345,8 +345,8 @@ export class TypstProject {
 
   /**
    * Request completion for `path` at `position`, using `source` as the
-   * current document state. One analyzer roundtrip; compiler is not touched —
-   * the compile sync path writes to the compiler separately. Throws when no
+   * current document state. Pure analyzer query — neither the compiler VFS
+   * nor project tracking (`files`/`getText`) is touched. Throws when no
    * analyzer is attached.
    */
   completion(
@@ -355,10 +355,8 @@ export class TypstProject {
     position: LspPosition,
   ): Promise<LspCompletionResponse> {
     const analyzer = this.requireAnalyzer("completion");
-    const p = normalizePath(path);
-    this.contentByPath.set(p, source);
     return analyzer.completion(
-      pathToAnalyzerUri(p, this.analyzerUriRoot),
+      pathToAnalyzerUri(normalizePath(path), this.analyzerUriRoot),
       source,
       position,
     );
@@ -366,8 +364,8 @@ export class TypstProject {
 
   /**
    * Request hover for `path` at `position`, using `source` as the current
-   * document state. One analyzer roundtrip; compiler is not touched. Throws
-   * when no analyzer is attached.
+   * document state. Pure analyzer query — neither the compiler VFS nor
+   * project tracking is touched. Throws when no analyzer is attached.
    */
   hover(
     path: Path,
@@ -375,10 +373,8 @@ export class TypstProject {
     position: LspPosition,
   ): Promise<LspHover | null> {
     const analyzer = this.requireAnalyzer("hover");
-    const p = normalizePath(path);
-    this.contentByPath.set(p, source);
     return analyzer.hover(
-      pathToAnalyzerUri(p, this.analyzerUriRoot),
+      pathToAnalyzerUri(normalizePath(path), this.analyzerUriRoot),
       source,
       position,
     );
