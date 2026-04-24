@@ -316,9 +316,7 @@ describe("TypstProject retries after transient worker failure", () => {
     const compiler = mockCompiler();
     (compiler.setText as any).mockRejectedValue(new Error("boom"));
     const project = new TypstProject({ compiler });
-    await expect(project.setText("/main.typ", "hello")).rejects.toThrow(
-      "boom",
-    );
+    await expect(project.setText("/main.typ", "hello")).rejects.toThrow("boom");
     expect(project.files).toEqual([]);
     expect(project.getText("/main.typ")).toBeUndefined();
   });
