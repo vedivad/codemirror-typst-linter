@@ -115,6 +115,63 @@ const states = Object.fromEntries(
 );
 ```
 
+## External sync / Y.js
+
+For collaborative editors, let your shared document model own the text and
+mirror it into `TypstProject`. Pass `sync: "external"` so
+`createTypstExtensions` does not install the editor-to-project sync plugin.
+Diagnostics, highlighting, analyzer-backed completion/hover, and formatting
+still work against the project state you provide.
+
+```ts
+import { EditorState } from "@codemirror/state";
+import { EditorView, basicSetup } from "codemirror";
+import * as Y from "yjs";
+import { yCollab } from "y-codemirror.next";
+import {
+  createTypstExtensions,
+  typstFilePath,
+  TypstProject,
+} from "@vedivad/codemirror-typst";
+
+const ydoc = new Y.Doc();
+const ytext = ydoc.getText("main.typ");
+const project = new TypstProject({
+  compiler,
+  analyzer,
+  autoCompile: { debounceMs: 500, maxWaitMs: 2000 },
+});
+
+await project.setText("/main.typ", ytext.toString());
+ytext.observe(() => {
+  project.setText("/main.typ", ytext.toString());
+});
+
+const typstExtensions = await createTypstExtensions({
+  project,
+  sync: "external",
+});
+
+new EditorView({
+  parent: document.querySelector("#app")!,
+  state: EditorState.create({
+    doc: ytext.toString(),
+    extensions: [
+      basicSetup,
+      yCollab(ytext, provider.awareness, { undoManager }),
+      ...typstExtensions,
+      typstFilePath.of("/main.typ"),
+    ],
+  }),
+});
+```
+
+For multi-file collaboration, keep a Y.js map of paths to text documents as
+the source of truth. Mirror snapshots or targeted updates into the project with
+`project.setMany()`, `project.setText()`, and `project.remove()`. Use
+`autoCompile.debounceMs` / `maxWaitMs` to coalesce bursts of local and remote
+edits without letting the preview feel stuck.
+
 ## Compile timing
 
 `TypstProject` auto-compiles after every VFS mutation (`setText`, `setMany`, `remove`, `clear`, entry change). The editor plugin only mirrors CM edits into `setText`; the project owns the compile schedule. Configure it once per project:
@@ -168,21 +225,33 @@ formatter: {
 
 ## Granular plugins
 
-`createTypstExtensions` composes two view plugins. Use them directly for custom setups:
+`createTypstExtensions` composes the default editor bundle. Use the granular
+pieces directly when you want custom CodeMirror lint/autocomplete UI, external
+sync, or only part of the Typst feature set:
 
 - **`createTypstCompileSync({ project })`** — mirrors the editor's content into the project's VFS on mount and on every change. The project auto-schedules the compile. Use on its own if you render diagnostics yourself.
 - **`createTypstDiagnostics({ project })`** — subscribes to `project.onCompile` and dispatches diagnostics for the active file. Use on its own if you drive VFS updates outside the editor (e.g. a Yjs observer).
+- **`typstCompletionSource({ project })`** — plugs Typst completions into your own `autocompletion(...)` setup.
+- **`createTypstHover({ project })`** — adds Typst hover tooltips, optionally using a custom code highlighter.
+- **`createTypstFormatter({ instance })`** — adds Typst formatting keybindings and optional format-on-save.
 
 ```ts
 import {
   createTypstCompileSync,
   createTypstDiagnostics,
+  createTypstHover,
+  createTypstFormatter,
+  typstCompletionSource,
   typstFilePath,
 } from "@vedivad/codemirror-typst";
+import { autocompletion } from "@codemirror/autocomplete";
 
 const extensions = [
   createTypstCompileSync({ project }),
   createTypstDiagnostics({ project }),
+  autocompletion({ override: [typstCompletionSource({ project })] }),
+  createTypstHover({ project }),
+  createTypstFormatter({ instance: formatter }),
   typstFilePath.of("/main.typ"),
 ];
 ```
