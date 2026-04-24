@@ -56,13 +56,14 @@ export class TypstAnalyzer {
   }
 
   async didOpen(uri: string, content: string): Promise<void> {
-    this.content.set(uri, content);
     await this.proxy.didOpen(uri, content);
+    this.content.set(uri, content);
   }
 
   async didClose(uri: string): Promise<void> {
-    if (!this.content.delete(uri)) return;
+    if (!this.content.has(uri)) return;
     await this.proxy.didClose(uri);
+    this.content.delete(uri);
   }
 
   /**
@@ -75,9 +76,9 @@ export class TypstAnalyzer {
       return;
     }
     if (this.content.get(uri) === content) return;
-    this.content.set(uri, content);
     const version = ++this.versionCounter;
     await this.proxy.didChange(uri, version, content);
+    this.content.set(uri, content);
   }
 
   /**
@@ -89,17 +90,19 @@ export class TypstAnalyzer {
     const opens: Array<{ uri: string; content: string }> = [];
     const changes: Array<{ uri: string; version: number; content: string }> =
       [];
+    const updates: Array<[string, string]> = [];
     for (const [uri, content] of Object.entries(docs)) {
       if (!this.content.has(uri)) {
         opens.push({ uri, content });
-        this.content.set(uri, content);
+        updates.push([uri, content]);
       } else if (this.content.get(uri) !== content) {
         changes.push({ uri, version: ++this.versionCounter, content });
-        this.content.set(uri, content);
+        updates.push([uri, content]);
       }
     }
     if (opens.length === 0 && changes.length === 0) return;
     await this.proxy.didChangeMany(opens, changes);
+    for (const [uri, content] of updates) this.content.set(uri, content);
   }
 
   /**
@@ -109,10 +112,11 @@ export class TypstAnalyzer {
   async didCloseMany(uris: string[]): Promise<void> {
     const toClose: string[] = [];
     for (const uri of uris) {
-      if (this.content.delete(uri)) toClose.push(uri);
+      if (this.content.has(uri)) toClose.push(uri);
     }
     if (toClose.length === 0) return;
     await this.proxy.didCloseMany(toClose);
+    for (const uri of toClose) this.content.delete(uri);
   }
 
   /**
@@ -130,15 +134,16 @@ export class TypstAnalyzer {
       return this.proxy.completion(uri, position);
     }
     const isOpen = this.content.has(uri);
-    this.content.set(uri, content);
     const version = ++this.versionCounter;
-    return this.proxy.completionWithDoc(
+    const result = await this.proxy.completionWithDoc(
       uri,
       version,
       content,
       position,
       isOpen ? "change" : "open",
     );
+    this.content.set(uri, content);
+    return result;
   }
 
   /**
@@ -156,15 +161,16 @@ export class TypstAnalyzer {
       return this.proxy.hover(uri, position);
     }
     const isOpen = this.content.has(uri);
-    this.content.set(uri, content);
     const version = ++this.versionCounter;
-    return this.proxy.hoverWithDoc(
+    const result = await this.proxy.hoverWithDoc(
       uri,
       version,
       content,
       position,
       isOpen ? "change" : "open",
     );
+    this.content.set(uri, content);
+    return result;
   }
 
   destroy(): void {

@@ -38,7 +38,8 @@ const DEFAULT_FONTS = [
   "https://cdn.jsdelivr.net/npm/roboto-font@0.1.0/fonts/Roboto/roboto-regular-webfont.ttf",
 ];
 
-const DEFAULT_WASM_URL = `https://cdn.jsdelivr.net/npm/@myriaddreamin/typst-ts-web-compiler@${__TYPST_TS_WEB_COMPILER_VERSION__}/pkg/typst_ts_web_compiler_bg.wasm`;
+const defaultWasmUrl = () =>
+  `https://cdn.jsdelivr.net/npm/@myriaddreamin/typst-ts-web-compiler@${__TYPST_TS_WEB_COMPILER_VERSION__}/pkg/typst_ts_web_compiler_bg.wasm`;
 
 /**
  * Manages a Typst compiler worker. Create one instance and share it across
@@ -68,7 +69,7 @@ export class TypstCompiler {
     const proxy = Comlink.wrap<CompilerWorker>(worker);
 
     await proxy.init(
-      options.wasmUrl ?? DEFAULT_WASM_URL,
+      options.wasmUrl ?? defaultWasmUrl(),
       options.fonts ?? DEFAULT_FONTS,
       options.packages ?? true,
     );
@@ -100,8 +101,8 @@ export class TypstCompiler {
    */
   async setText(path: string, source: string): Promise<void> {
     if (this.content.get(path) === source) return;
+    await this.proxy.mapShadow(path, this.encoder.encode(source));
     this.content.set(path, source);
-    return this.proxy.mapShadow(path, this.encoder.encode(source));
   }
 
   /** Add or overwrite a JSON file in the virtual compiler filesystem. */
@@ -122,26 +123,29 @@ export class TypstCompiler {
    */
   async setMany(files: Record<string, string | Uint8Array>): Promise<void> {
     const encoded: Record<string, Uint8Array> = {};
+    const textUpdates: Array<[string, string]> = [];
+    const binaryInvalidations: string[] = [];
     for (const [path, content] of Object.entries(files)) {
       if (typeof content === "string") {
         if (this.content.get(path) === content) continue;
-        this.content.set(path, content);
+        textUpdates.push([path, content]);
         encoded[path] = this.encoder.encode(content);
       } else {
-        this.content.delete(path);
+        binaryInvalidations.push(path);
         encoded[path] = content;
       }
     }
     if (Object.keys(encoded).length === 0) return;
-    return this.proxy.mapShadowMany(encoded);
+    await this.proxy.mapShadowMany(encoded);
+    for (const [path, content] of textUpdates) this.content.set(path, content);
+    for (const path of binaryInvalidations) this.content.delete(path);
   }
 
   /** Add or overwrite a binary file in the virtual compiler filesystem. */
-  setBinary(
+  async setBinary(
     path: string,
     content: ArrayBuffer | ArrayBufferView,
   ): Promise<void> {
-    this.content.delete(path);
     const bytes =
       content instanceof ArrayBuffer
         ? new Uint8Array(content)
@@ -150,19 +154,20 @@ export class TypstCompiler {
             content.byteOffset,
             content.byteLength,
           );
-    return this.proxy.mapShadow(path, bytes);
+    await this.proxy.mapShadow(path, bytes);
+    this.content.delete(path);
   }
 
   /** Remove a file from the virtual compiler filesystem. */
-  remove(path: string): Promise<void> {
+  async remove(path: string): Promise<void> {
+    await this.proxy.unmapShadow(path);
     this.content.delete(path);
-    return this.proxy.unmapShadow(path);
   }
 
   /** Clear all virtual files from the compiler filesystem. */
-  clear(): Promise<void> {
+  async clear(): Promise<void> {
+    await this.proxy.resetShadow();
     this.content.clear();
-    return this.proxy.resetShadow();
   }
 
   destroy(): void {

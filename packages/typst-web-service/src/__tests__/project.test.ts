@@ -268,6 +268,62 @@ describe("TypstProject analyzer-only calls do not touch project state", () => {
   });
 });
 
+describe("TypstProject retries after transient worker failure", () => {
+  it("setText retry still reaches the compiler after a compiler failure", async () => {
+    const compiler = mockCompiler();
+    (compiler.setText as any)
+      .mockRejectedValueOnce(new Error("worker boom"))
+      .mockResolvedValue(undefined);
+    const project = new TypstProject({ compiler });
+    await expect(project.setText("/main.typ", "hello")).rejects.toThrow(
+      "worker boom",
+    );
+    await project.setText("/main.typ", "hello");
+    expect(compiler.setText).toHaveBeenCalledTimes(2);
+    expect(project.files).toEqual(["/main.typ"]);
+    expect(project.getText("/main.typ")).toBe("hello");
+  });
+
+  it("setText retry still reaches the analyzer after an analyzer failure", async () => {
+    const compiler = mockCompiler();
+    const analyzer = mockAnalyzer();
+    (analyzer.didChange as any)
+      .mockRejectedValueOnce(new Error("analyzer boom"))
+      .mockResolvedValue(undefined);
+    const project = new TypstProject({ compiler, analyzer });
+    await expect(project.setText("/main.typ", "hello")).rejects.toThrow(
+      "analyzer boom",
+    );
+    await project.setText("/main.typ", "hello");
+    expect(analyzer.didChange).toHaveBeenCalledTimes(2);
+  });
+
+  it("setMany retry still sends the batch after a worker failure", async () => {
+    const compiler = mockCompiler();
+    (compiler.setMany as any)
+      .mockRejectedValueOnce(new Error("batch boom"))
+      .mockResolvedValue(undefined);
+    const project = new TypstProject({ compiler });
+    await expect(
+      project.setMany({ "/a.typ": "x", "/b.typ": "y" }),
+    ).rejects.toThrow("batch boom");
+    await project.setMany({ "/a.typ": "x", "/b.typ": "y" });
+    expect(compiler.setMany).toHaveBeenCalledTimes(2);
+    expect(project.files).toEqual(["/a.typ", "/b.typ"]);
+  });
+
+  it("leaves contentByPath untouched after a failed setText", async () => {
+    const compiler = mockCompiler();
+    (compiler.setText as any).mockRejectedValue(new Error("boom"));
+    const project = new TypstProject({ compiler });
+    await expect(project.setText("/main.typ", "hello")).rejects.toThrow(
+      "boom",
+    );
+    expect(project.files).toEqual([]);
+    expect(project.getText("/main.typ")).toBeUndefined();
+  });
+});
+
 describe("TypstProject synthetic error diagnostics", () => {
   it("spreads worker-crash errors across every tracked text path", async () => {
     const compiler = mockCompiler();

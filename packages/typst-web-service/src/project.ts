@@ -192,7 +192,6 @@ export class TypstProject {
   async setText(path: Path, content: string): Promise<void> {
     const p = normalizePath(path);
     if (this.contentByPath.get(p) === content) return;
-    this.contentByPath.set(p, content);
     await Promise.all([
       this.compiler.setText(p, content),
       this.analyzer?.didChange(
@@ -200,6 +199,7 @@ export class TypstProject {
         content,
       ) ?? Promise.resolve(),
     ]);
+    this.contentByPath.set(p, content);
     this.scheduleCompile();
   }
 
@@ -230,6 +230,7 @@ export class TypstProject {
   async setMany(files: Record<Path, string | Uint8Array>): Promise<void> {
     const normalized: Record<Path, string | Uint8Array> = {};
     const analyzerDocs: Record<string, string> = {};
+    const textUpdates: Array<[Path, string]> = [];
     for (const [path, content] of Object.entries(files)) {
       const p = normalizePath(path);
       if (typeof content !== "string") {
@@ -237,7 +238,7 @@ export class TypstProject {
         continue;
       }
       if (this.contentByPath.get(p) === content) continue;
-      this.contentByPath.set(p, content);
+      textUpdates.push([p, content]);
       normalized[p] = content;
       analyzerDocs[pathToAnalyzerUri(p, this.analyzerUriRoot)] = content;
     }
@@ -246,6 +247,7 @@ export class TypstProject {
       this.compiler.setMany(normalized),
       this.analyzer?.didChangeMany(analyzerDocs) ?? Promise.resolve(),
     ]);
+    for (const [p, content] of textUpdates) this.contentByPath.set(p, content);
     this.scheduleCompile();
   }
 
@@ -255,13 +257,14 @@ export class TypstProject {
    */
   async remove(path: Path): Promise<void> {
     const p = normalizePath(path);
-    const wasText = this.contentByPath.delete(p);
+    const wasText = this.contentByPath.has(p);
     await Promise.all([
       this.compiler.remove(p),
       wasText
         ? this.analyzer?.didClose(pathToAnalyzerUri(p, this.analyzerUriRoot))
         : undefined,
     ]);
+    this.contentByPath.delete(p);
     this.scheduleCompile();
   }
 
@@ -270,11 +273,11 @@ export class TypstProject {
     const uris = Array.from(this.contentByPath.keys(), (p) =>
       pathToAnalyzerUri(p, this.analyzerUriRoot),
     );
-    this.contentByPath.clear();
     await Promise.all([
       this.compiler.clear(),
       uris.length > 0 ? this.analyzer?.didCloseMany(uris) : undefined,
     ]);
+    this.contentByPath.clear();
     this.scheduleCompile();
   }
 
