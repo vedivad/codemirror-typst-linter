@@ -1,8 +1,14 @@
 # @vedivad/typst-web-service
 
-Editor-agnostic Typst services for the web — compile, render, analyze, and format via WASM.
+Editor-agnostic Typst services for the web — compile, render, analyze, and
+format via WASM.
 
-Four independent classes, each created via async `create()` factory methods. Import only what you need.
+Four independent classes. Import only what you need.
+
+`TypstCompiler.create()` and `TypstAnalyzer.create()` are async because they
+initialize worker-backed WASM services up front. `TypstRenderer.create()` and
+`TypstFormatter.create()` are sync wrappers; their WASM work is awaited by
+methods like `renderSvgPages()` and `format()`.
 
 ## Install
 
@@ -18,19 +24,19 @@ npm install @vedivad/typst-web-service
 import { TypstCompiler, TypstRenderer } from "@vedivad/typst-web-service";
 
 const compiler = await TypstCompiler.create();
-const renderer = await TypstRenderer.create();
+const renderer = TypstRenderer.create();
 
 // Populate the VFS, then compile
 await compiler.setText("/main.typ", "= Hello, Typst");
-const result = await compiler.compile();
-if (result.vector) {
-  const pages = await renderer.renderSvgPages(result.vector);
+const firstResult = await compiler.compile();
+if (firstResult.vector) {
+  const pages = await renderer.renderSvgPages(firstResult.vector);
   document.querySelector("#preview")!.innerHTML = pages
     .map((page) => `<div class="page">${page.svg}</div>`)
     .join("");
 }
 
-// result.diagnostics are returned in deterministic order
+// firstResult.diagnostics are returned in deterministic order
 // (path, start position, end position, message)
 
 // Multi-file
@@ -38,7 +44,7 @@ await compiler.setMany({
   "/main.typ": '#import "template.typ": greet\n#greet("World")',
   "/template.typ": "#let greet(name) = [Hello, #name!]",
 });
-const result = await compiler.compile();
+const multiFileResult = await compiler.compile();
 
 // PDF export — operates on the same VFS state
 const pdf = await compiler.compilePdf();
@@ -54,7 +60,7 @@ Requires a bundler that supports WASM imports (e.g. Vite + `vite-plugin-wasm`).
 ```ts
 import { TypstFormatter } from "@vedivad/typst-web-service";
 
-const formatter = await TypstFormatter.create({ tab_spaces: 2, max_width: 80 });
+const formatter = TypstFormatter.create({ tab_spaces: 2, max_width: 80 });
 const formatted = await formatter.format(source);
 const rangeResult = await formatter.formatRange(source, start, end);
 ```
@@ -83,14 +89,13 @@ const analyzer = await TypstAnalyzer.create({ wasmUrl: tinymistWasmUrl });
 await analyzer.didChange("untitled:project/main.typ", source);
 const completions = await analyzer.completion(
   "untitled:project/main.typ",
+  source,
+  { line, character },
+);
+const hover = await analyzer.hover("untitled:project/main.typ", source, {
   line,
   character,
-);
-const hover = await analyzer.hover(
-  "untitled:project/main.typ",
-  line,
-  character,
-);
+});
 
 analyzer.destroy();
 ```
