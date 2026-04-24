@@ -71,12 +71,20 @@ export interface TypstExtensionsOptions {
   formatter?: TypstFormatterOptions;
   /** Syntax highlighting. Omit for defaults (github-dark). */
   highlighting?: TypstShikiOptions;
+  /**
+   * How editor content is mirrored into the TypstProject.
+   *
+   * - "editor" (default): CodeMirror pushes doc/path changes into the project.
+   * - "external": caller owns syncing, e.g. from Y.js observers via
+   *   `project.setText()` / `project.setMany()`.
+   */
+  sync?: "editor" | "external";
 }
 
 /**
  * Create the default Typst extension set for CodeMirror. The returned extensions
- * drive compilation through the shared `TypstProject`; subscribe to results via
- * `project.onCompile(...)`, and trigger an out-of-band recompile with
+ * can drive compilation through the shared `TypstProject`; subscribe to results
+ * via `project.onCompile(...)`, and trigger an out-of-band recompile with
  * `project.compile()`.
  *
  * The editor's file path is read from the `typstFilePath` facet on the
@@ -98,20 +106,26 @@ export interface TypstExtensionsOptions {
  *
  * Switching files is just `view.setState(otherState)` — the new state's
  * facet value travels along with it, and the compiler plugin reacts.
+ *
+ * For collaborative or externally-owned documents, pass `sync: "external"`
+ * and mirror your source of truth into the project yourself. Diagnostics,
+ * completion, hover, highlighting, and formatting still work against that
+ * project state.
  */
 export async function createTypstExtensions(
   options: TypstExtensionsOptions,
 ): Promise<Extension[]> {
-  const { project } = options;
+  const { project, sync = "editor" } = options;
 
   const shiki = await createTypstShikiHighlighting(options.highlighting);
 
   const extensions: Extension[] = [shiki.extension, lintGutter()];
 
-  extensions.push(
-    createTypstCompileSync({ project }),
-    createTypstDiagnostics({ project }),
-  );
+  if (sync !== "external") {
+    extensions.push(createTypstCompileSync({ project }));
+  }
+
+  extensions.push(createTypstDiagnostics({ project }));
 
   if (project.hasAnalyzer) {
     extensions.push(
