@@ -72,13 +72,16 @@ export function diffChanges(oldStr: string, newStr: string): DiffChange[] {
 async function formatDocument(
   view: EditorView,
   formatter: TypstFormatter,
-): Promise<void> {
+): Promise<boolean> {
   const doc = view.state.doc.toString();
   const formatted = await formatter.format(doc);
+  if (view.state.doc.toString() !== doc) return false;
+
   const changes = diffChanges(doc, formatted);
   if (changes.length > 0) {
     view.dispatch({ changes });
   }
+  return true;
 }
 
 async function runFormat(
@@ -94,12 +97,15 @@ async function runFormat(
     if (selectionOnlyWhenActive && from !== to) {
       const doc = view.state.doc.toString();
       const result = await formatter.formatRange(doc, from, to);
+      if (view.state.doc.toString() !== doc) return;
+
       view.dispatch({
         changes: { from: result.start, to: result.end, insert: result.text },
       });
     } else {
-      await formatDocument(view, formatter);
-      onFormatted?.();
+      if (await formatDocument(view, formatter)) {
+        onFormatted?.();
+      }
     }
   } catch (error) {
     handleError(error, onError);

@@ -26,6 +26,31 @@ function mockView(doc: string, selFrom = 0, selTo = 0) {
   } as any;
 }
 
+function mutableMockView(doc: string, selFrom = 0, selTo = 0) {
+  const dispatch = vi.fn();
+  const view = {
+    state: {
+      doc: EditorState.create({ doc }).doc,
+      selection: { main: { from: selFrom, to: selTo } },
+    },
+    dispatch,
+    setDoc(next: string) {
+      view.state.doc = EditorState.create({ doc: next }).doc;
+    },
+  };
+  return view as any;
+}
+
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
 /** Extract the `run` function for a given key from a keymap extension. */
 function getKeyRun(
   ext: any,
@@ -146,6 +171,48 @@ describe("createTypstFormatter", () => {
     });
   });
 
+  it("skips full-document dispatch when the document changes before formatting resolves", async () => {
+    const pending = deferred<string>();
+    const formatter = mockFormatter({
+      format: vi.fn().mockReturnValue(pending.promise),
+    });
+    const ext = createTypstFormatter({ instance: formatter });
+    const run = getKeyRun(ext, "Shift-Alt-f");
+    const view = mutableMockView("original");
+
+    run!(view);
+    await vi.waitFor(() => {
+      expect(formatter.format).toHaveBeenCalledWith("original");
+    });
+    view.setDoc("original plus typing");
+    pending.resolve("formatted");
+    await pending.promise;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(view.dispatch).not.toHaveBeenCalled();
+  });
+
+  it("skips range dispatch when the document changes before formatting resolves", async () => {
+    const pending = deferred<{ start: number; end: number; text: string }>();
+    const formatter = mockFormatter({
+      formatRange: vi.fn().mockReturnValue(pending.promise),
+    });
+    const ext = createTypstFormatter({ instance: formatter });
+    const run = getKeyRun(ext, "Shift-Alt-f");
+    const view = mutableMockView("hello world", 0, 5);
+
+    run!(view);
+    await vi.waitFor(() => {
+      expect(formatter.formatRange).toHaveBeenCalledWith("hello world", 0, 5);
+    });
+    view.setDoc("hello brave world");
+    pending.resolve({ start: 0, end: 5, text: "HELLO" });
+    await pending.promise;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(view.dispatch).not.toHaveBeenCalled();
+  });
+
   it("calls onError when formatter rejects", async () => {
     const onError = vi.fn();
     const formatter = mockFormatter({
@@ -218,5 +285,31 @@ describe("createTypstFormatter", () => {
     await vi.waitFor(() => {
       expect(onSave).toHaveBeenCalled();
     });
+  });
+
+  it("does not call save callback when the document changes before formatting resolves", async () => {
+    const onSave = vi.fn();
+    const pending = deferred<string>();
+    const formatter = mockFormatter({
+      format: vi.fn().mockReturnValue(pending.promise),
+    });
+    const ext = createTypstFormatter({
+      instance: formatter,
+      formatOnSave: onSave,
+    });
+    const run = getKeyRun(ext, "Mod-s");
+    const view = mutableMockView("original");
+
+    run!(view);
+    await vi.waitFor(() => {
+      expect(formatter.format).toHaveBeenCalledWith("original");
+    });
+    view.setDoc("changed");
+    pending.resolve("formatted");
+    await pending.promise;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(view.dispatch).not.toHaveBeenCalled();
+    expect(onSave).not.toHaveBeenCalled();
   });
 });
