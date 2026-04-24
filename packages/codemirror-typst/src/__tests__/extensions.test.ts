@@ -19,7 +19,11 @@ vi.mock("../diagnostics-plugin.js", () => ({
 
 import { createTypstCompileSync } from "../compile-sync.js";
 import { createTypstDiagnostics } from "../diagnostics-plugin.js";
-import { createTypstExtensions } from "../index.js";
+import {
+  createTypstExtensions,
+  createTypstHover,
+  typstCompletionSource,
+} from "../index.js";
 
 function mockProject() {
   return { hasAnalyzer: false };
@@ -49,5 +53,12 @@ describe("createTypstExtensions sync mode", () => {
     expect(createTypstDiagnostics).toHaveBeenCalledWith({ project });
     expect(extensions).not.toContainEqual({ kind: "compile-sync" });
     expect(extensions).toContainEqual({ kind: "diagnostics" });
+  });
+});
+
+describe("granular public APIs", () => {
+  it("exports hover and completion helpers from the package entrypoint", () => {
+    expect(createTypstHover).toBeTypeOf("function");
+    expect(typstCompletionSource).toBeTypeOf("function");
   });
 });

@@ -3,13 +3,16 @@ import { lintGutter } from "@codemirror/lint";
 import type { Extension } from "@codemirror/state";
 import type { TypstProject } from "@vedivad/typst-web-service";
 import { createTypstCompileSync } from "./compile-sync.js";
+import type { TypstCompletionOptions } from "./completion.js";
 import { typstCompletionSource } from "./completion.js";
 import { toCMDiagnostic } from "./diagnostics.js";
 import { createTypstDiagnostics } from "./diagnostics-plugin.js";
 import { typstFilePath } from "./facets.js";
 import type { TypstFormatterOptions } from "./formatter.js";
 import { createTypstFormatter } from "./formatter.js";
+import type { TypstHoverOptions } from "./hover.js";
 import { createTypstHover } from "./hover.js";
+import type { CodeHighlighter } from "./hover-markdown.js";
 import type { TypstShikiHighlighting, TypstShikiOptions } from "./shiki.js";
 import {
   createTypstShikiExtension,
@@ -37,11 +40,16 @@ export {
 } from "@vedivad/typst-web-service";
 export type {
   TypstFormatterOptions,
+  TypstCompletionOptions,
+  TypstHoverOptions,
+  CodeHighlighter,
   TypstShikiHighlighting,
   TypstShikiOptions,
 };
 export {
   createTypstCompileSync,
+  createTypstHover,
+  typstCompletionSource,
   createTypstDiagnostics,
   createTypstFormatter,
   createTypstShikiExtension,
