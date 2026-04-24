@@ -204,20 +204,41 @@ export class TypstProject {
   }
 
   /**
-   * Add or overwrite a JSON file. Compiler-only — the analyzer does not track
-   * data files.
+   * Add or overwrite a JSON file. The analyzer does not track data files, but
+   * if `path` was previously tracked as text the analyzer document is closed
+   * and the text entry retired so the three views stay consistent.
    */
   async setJson(path: Path, value: unknown): Promise<void> {
-    await this.compiler.setJson(normalizePath(path), value);
+    const p = normalizePath(path);
+    const wasText = this.contentByPath.has(p);
+    await Promise.all([
+      this.compiler.setJson(p, value),
+      wasText
+        ? this.analyzer?.didClose(pathToAnalyzerUri(p, this.analyzerUriRoot))
+        : undefined,
+    ]);
+    this.contentByPath.delete(p);
     this.scheduleCompile();
   }
 
-  /** Add or overwrite a binary file. Compiler-only. */
+  /**
+   * Add or overwrite a binary file. If `path` was previously tracked as text,
+   * the analyzer document is closed and the text entry retired in the same
+   * call so the compiler / analyzer / project views stay consistent.
+   */
   async setBinary(
     path: Path,
     content: ArrayBuffer | ArrayBufferView,
   ): Promise<void> {
-    await this.compiler.setBinary(normalizePath(path), content);
+    const p = normalizePath(path);
+    const wasText = this.contentByPath.has(p);
+    await Promise.all([
+      this.compiler.setBinary(p, content),
+      wasText
+        ? this.analyzer?.didClose(pathToAnalyzerUri(p, this.analyzerUriRoot))
+        : undefined,
+    ]);
+    this.contentByPath.delete(p);
     this.scheduleCompile();
   }
 
@@ -231,10 +252,16 @@ export class TypstProject {
     const normalized: Record<Path, string | Uint8Array> = {};
     const analyzerDocs: Record<string, string> = {};
     const textUpdates: Array<[Path, string]> = [];
+    const analyzerCloses: string[] = [];
+    const binaryRetirements: Path[] = [];
     for (const [path, content] of Object.entries(files)) {
       const p = normalizePath(path);
       if (typeof content !== "string") {
         normalized[p] = content;
+        if (this.contentByPath.has(p)) {
+          analyzerCloses.push(pathToAnalyzerUri(p, this.analyzerUriRoot));
+          binaryRetirements.push(p);
+        }
         continue;
       }
       if (this.contentByPath.get(p) === content) continue;
@@ -246,8 +273,12 @@ export class TypstProject {
     await Promise.all([
       this.compiler.setMany(normalized),
       this.analyzer?.didChangeMany(analyzerDocs) ?? Promise.resolve(),
+      analyzerCloses.length > 0
+        ? (this.analyzer?.didCloseMany(analyzerCloses) ?? Promise.resolve())
+        : Promise.resolve(),
     ]);
     for (const [p, content] of textUpdates) this.contentByPath.set(p, content);
+    for (const p of binaryRetirements) this.contentByPath.delete(p);
     this.scheduleCompile();
   }
 

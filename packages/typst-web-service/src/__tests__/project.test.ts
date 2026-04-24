@@ -324,6 +324,56 @@ describe("TypstProject retries after transient worker failure", () => {
   });
 });
 
+describe("TypstProject retires text tracking on non-text overwrite", () => {
+  it("setBinary on a previously text-tracked path closes the analyzer doc and clears contentByPath", async () => {
+    const compiler = mockCompiler();
+    const analyzer = mockAnalyzer();
+    const project = new TypstProject({ compiler, analyzer });
+    await project.setText("/a.typ", "hello");
+    await project.setBinary("/a.typ", new Uint8Array([1, 2, 3]));
+    expect(project.files).toEqual([]);
+    expect(project.getText("/a.typ")).toBeUndefined();
+    expect(analyzer.didClose).toHaveBeenCalledWith("untitled:project/a.typ");
+  });
+
+  it("setJson on a previously text-tracked path closes the analyzer doc and clears contentByPath", async () => {
+    const compiler = mockCompiler();
+    const analyzer = mockAnalyzer();
+    const project = new TypstProject({ compiler, analyzer });
+    await project.setText("/a.typ", "hello");
+    await project.setJson("/a.typ", { k: 1 });
+    expect(project.files).toEqual([]);
+    expect(project.getText("/a.typ")).toBeUndefined();
+    expect(analyzer.didClose).toHaveBeenCalledWith("untitled:project/a.typ");
+  });
+
+  it("setMany retires binary-overwriting-text entries via didCloseMany", async () => {
+    const compiler = mockCompiler();
+    const analyzer = mockAnalyzer();
+    const project = new TypstProject({ compiler, analyzer });
+    await project.setMany({ "/a.typ": "x", "/b.typ": "y" });
+    await project.setMany({
+      "/a.typ": new Uint8Array([9]),
+      "/b.typ": "y2",
+    });
+    expect(project.files).toEqual(["/b.typ"]);
+    expect(project.getText("/a.typ")).toBeUndefined();
+    expect(project.getText("/b.typ")).toBe("y2");
+    expect(analyzer.didCloseMany).toHaveBeenCalledWith([
+      "untitled:project/a.typ",
+    ]);
+  });
+
+  it("setBinary on a path that was never text does not call didClose", async () => {
+    const compiler = mockCompiler();
+    const analyzer = mockAnalyzer();
+    const project = new TypstProject({ compiler, analyzer });
+    await project.setBinary("/never.typ", new Uint8Array([1]));
+    expect(project.files).toEqual([]);
+    expect(analyzer.didClose).not.toHaveBeenCalled();
+  });
+});
+
 describe("TypstProject synthetic error diagnostics", () => {
   it("spreads worker-crash errors across every tracked text path", async () => {
     const compiler = mockCompiler();
