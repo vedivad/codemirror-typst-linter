@@ -18,7 +18,7 @@ const [compiler, renderer] = await Promise.all([
 
 const project = new TypstProject({
   compiler,
-  autoCompile: { debounceMs: 500, maxWaitMs: 1500 },
+  autoCompile: { debounceMs: 100, maxWaitMs: 500 },
 });
 
 project.onCompile(async (result) => {
