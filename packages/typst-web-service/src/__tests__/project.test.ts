@@ -362,6 +362,77 @@ describe("TypstProject retires text tracking on non-text overwrite", () => {
     ]);
   });
 
+  it("setMany lets the last normalized text entry win over an earlier binary duplicate", async () => {
+    const compiler = mockCompiler();
+    const analyzer = mockAnalyzer();
+    const project = new TypstProject({ compiler, analyzer });
+    await project.setText("/a.typ", "old");
+    vi.mocked(compiler.setMany).mockClear();
+    vi.mocked(analyzer.didChangeMany).mockClear();
+    vi.mocked(analyzer.didCloseMany).mockClear();
+
+    await project.setMany({
+      "a.typ": new Uint8Array([1]),
+      "/a.typ": "new text",
+    });
+
+    expect(compiler.setMany).toHaveBeenCalledWith({ "/a.typ": "new text" });
+    expect(analyzer.didChangeMany).toHaveBeenCalledWith({
+      "untitled:project/a.typ": "new text",
+    });
+    expect(analyzer.didCloseMany).not.toHaveBeenCalled();
+    expect(project.files).toEqual(["/a.typ"]);
+    expect(project.getText("/a.typ")).toBe("new text");
+  });
+
+  it("setMany lets the last normalized binary entry win over an earlier text duplicate", async () => {
+    const compiler = mockCompiler();
+    const analyzer = mockAnalyzer();
+    const project = new TypstProject({ compiler, analyzer });
+    const binary = new Uint8Array([9]);
+    await project.setText("/a.typ", "old");
+    vi.mocked(compiler.setMany).mockClear();
+    vi.mocked(analyzer.didChangeMany).mockClear();
+    vi.mocked(analyzer.didCloseMany).mockClear();
+
+    await project.setMany({
+      "a.typ": "new text",
+      "/a.typ": binary,
+    });
+
+    expect(compiler.setMany).toHaveBeenCalledWith({ "/a.typ": binary });
+    expect(analyzer.didChangeMany).toHaveBeenCalledWith({});
+    expect(analyzer.didCloseMany).toHaveBeenCalledWith([
+      "untitled:project/a.typ",
+    ]);
+    expect(project.files).toEqual([]);
+    expect(project.getText("/a.typ")).toBeUndefined();
+  });
+
+  it("setMany canonicalizes before deduping unchanged text against a later binary duplicate", async () => {
+    const compiler = mockCompiler();
+    const analyzer = mockAnalyzer();
+    const project = new TypstProject({ compiler, analyzer });
+    const binary = new Uint8Array([7]);
+    await project.setText("/a.typ", "old");
+    vi.mocked(compiler.setMany).mockClear();
+    vi.mocked(analyzer.didChangeMany).mockClear();
+    vi.mocked(analyzer.didCloseMany).mockClear();
+
+    await project.setMany({
+      "a.typ": "old",
+      "/a.typ": binary,
+    });
+
+    expect(compiler.setMany).toHaveBeenCalledWith({ "/a.typ": binary });
+    expect(analyzer.didChangeMany).toHaveBeenCalledWith({});
+    expect(analyzer.didCloseMany).toHaveBeenCalledWith([
+      "untitled:project/a.typ",
+    ]);
+    expect(project.files).toEqual([]);
+    expect(project.getText("/a.typ")).toBeUndefined();
+  });
+
   it("setBinary on a path that was never text does not call didClose", async () => {
     const compiler = mockCompiler();
     const analyzer = mockAnalyzer();

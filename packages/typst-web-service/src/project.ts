@@ -249,13 +249,17 @@ export class TypstProject {
    * always go through (no content cache, so no dedup).
    */
   async setMany(files: Record<Path, string | Uint8Array>): Promise<void> {
+    const canonical = new Map<Path, string | Uint8Array>();
+    for (const [path, content] of Object.entries(files)) {
+      canonical.set(normalizePath(path), content);
+    }
+
     const normalized: Record<Path, string | Uint8Array> = {};
     const analyzerDocs: Record<string, string> = {};
     const textUpdates: Array<[Path, string]> = [];
     const analyzerCloses: string[] = [];
     const binaryRetirements: Path[] = [];
-    for (const [path, content] of Object.entries(files)) {
-      const p = normalizePath(path);
+    for (const [p, content] of canonical) {
       if (typeof content !== "string") {
         normalized[p] = content;
         if (this.contentByPath.has(p)) {
