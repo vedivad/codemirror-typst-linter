@@ -11,6 +11,19 @@
   --info: #7ecfff;
 }
 
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f4f4f1;
+  --panel: #ffffff;
+  --panel-alt: #ededeb;
+  --border: #d0d0cc;
+  --text: #1f2328;
+  --muted: #666d78;
+  --danger: #b42318;
+  --warning: #946200;
+  --info: #0969da;
+}
+
 body {
   margin: 0;
   background: var(--bg);
@@ -36,7 +49,14 @@ header {
   justify-content: space-between;
 }
 
-.export-btn {
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.export-btn,
+.theme-toggle {
   padding: 0.4rem 1rem;
   background: #f3f3f3;
   color: #111;
@@ -45,7 +65,8 @@ header {
   cursor: pointer;
 }
 
-.export-btn:hover {
+.export-btn:hover,
+.theme-toggle:hover {
   background: #e8e8e8;
 }
 
@@ -111,8 +132,8 @@ header p {
 }
 
 .tab.active {
-  color: #fff;
-  border-bottom-color: #fff;
+  color: var(--text);
+  border-bottom-color: var(--text);
 }
 
 .tab-close {
@@ -151,7 +172,7 @@ header p {
 }
 
 .tab-add:hover {
-  color: #fff;
+  color: var(--text);
 }
 
 .tab-new-file-input {

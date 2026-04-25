@@ -1,4 +1,4 @@
-import { EditorState } from "@codemirror/state";
+import { Compartment, EditorState } from "@codemirror/state";
 import { oneDark } from "@codemirror/theme-one-dark";
 import {
   createTypstEditor,
@@ -22,6 +22,9 @@ const previewEl = document.getElementById("preview")!;
 const editorEl = document.getElementById("editor")!;
 const tabsEl = document.getElementById("tabs")!;
 const exportBtn = document.getElementById("export-pdf") as HTMLButtonElement;
+const themeToggleBtn = document.getElementById(
+  "theme-toggle",
+) as HTMLButtonElement;
 
 const [formatter, compiler, renderer, analyzer] = await Promise.all([
   TypstFormatter.create({ tab_spaces: 2, max_width: 80 }),
@@ -42,6 +45,7 @@ await project.compile(); // trigger initial compile immediately, bypass auto-com
 
 let activeFile = project.files[0];
 let activeView: EditorView | null = null;
+let colorTheme: "light" | "dark" = "light";
 
 // --- Compile results → preview + diagnostics panel ---
 
@@ -100,10 +104,24 @@ const typst = await createTypstEditor({
   project,
   sync: editorSync(),
   formatter: { instance: formatter, formatOnSave: true },
-  highlighting: { theme: "light" },
+  highlighting: {
+    themes: { light: "github-light", dark: "github-dark-dimmed" },
+    theme: colorTheme,
+  },
 });
 
-const sharedExtensions = [basicSetup, oneDark, typst.extension];
+const editorTheme = new Compartment();
+const sharedExtensions = [basicSetup, editorTheme.of([]), typst.extension];
+
+function syncTheme(view: EditorView) {
+  document.documentElement.dataset.theme = colorTheme;
+  themeToggleBtn.textContent = colorTheme === "dark" ? "Dark" : "Light";
+  themeToggleBtn.setAttribute("aria-pressed", String(colorTheme === "dark"));
+  view.dispatch({
+    effects: editorTheme.reconfigure(colorTheme === "dark" ? oneDark : []),
+  });
+  typst.highlighting?.setTheme(view, colorTheme);
+}
 
 const states: Record<string, EditorState> = Object.fromEntries(
   project.files.map((path) => [
@@ -133,6 +151,7 @@ function switchTab(path: string) {
     });
   }
 
+  syncTheme(activeView);
   renderTabs();
 }
 
@@ -261,6 +280,13 @@ exportBtn.addEventListener("click", async () => {
   } finally {
     exportBtn.disabled = false;
     exportBtn.textContent = "Export PDF";
+  }
+});
+
+themeToggleBtn.addEventListener("click", () => {
+  colorTheme = colorTheme === "dark" ? "light" : "dark";
+  if (activeView) {
+    syncTheme(activeView);
   }
 });
 

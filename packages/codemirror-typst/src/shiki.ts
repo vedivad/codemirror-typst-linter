@@ -28,7 +28,8 @@ export async function createTypstHighlighting(
     createJavaScriptRegexEngine,
     createOnigurumaEngine,
   } = await import("shiki");
-  const { default: shiki } = await import("codemirror-shiki");
+  const { default: shiki, synchronousHighlightEffect } =
+    await import("codemirror-shiki");
 
   let themes = options.themes;
   if (!themes) {
@@ -91,7 +92,10 @@ export async function createTypstHighlighting(
     setTheme(view, theme) {
       currentTheme = theme;
       view.dispatch({
-        effects: compartment.reconfigure(buildExtension(resolveTheme(theme))),
+        effects: [
+          compartment.reconfigure(buildExtension(resolveTheme(theme))),
+          synchronousHighlightEffect.of(null),
+        ],
       });
     },
     highlightCode,

@@ -11,6 +11,9 @@ const mocks = vi.hoisted(() => {
   };
   return {
     highlighter,
+    synchronousHighlightEffect: {
+      of: vi.fn(() => ({ kind: "sync-highlight" })),
+    },
     shikiExtension: vi.fn((options: { theme: string }) => ({
       kind: "shiki-extension",
       theme: options.theme,
@@ -26,6 +29,7 @@ vi.mock("shiki", () => ({
 
 vi.mock("codemirror-shiki", () => ({
   default: mocks.shikiExtension,
+  synchronousHighlightEffect: mocks.synchronousHighlightEffect,
 }));
 
 describe("createTypstHighlighting", () => {
@@ -41,8 +45,9 @@ describe("createTypstHighlighting", () => {
 
     expect(highlighting.theme).toBe("dark");
     expect(view.dispatch).toHaveBeenCalledWith({
-      effects: expect.any(Object),
+      effects: [expect.any(Object), { kind: "sync-highlight" }],
     });
+    expect(mocks.synchronousHighlightEffect.of).toHaveBeenCalledWith(null);
     expect(mocks.shikiExtension).toHaveBeenLastCalledWith(
       expect.objectContaining({ theme: "github-dark-dimmed" }),
     );
