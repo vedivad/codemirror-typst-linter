@@ -37,15 +37,16 @@ release-check-clean:
     git diff --cached --quiet || (echo "Working tree has staged-but-uncommitted changes. Commit/stash first:" && git status --short && exit 1)
 
 release-bump version:
-    npm pkg set version={{version}} --workspace packages/typst-web-service --workspace packages/typst-web-yjs --workspace packages/codemirror-typst
+    npm pkg set version={{ version }} --workspace packages/typst-web-service --workspace packages/typst-web-yjs --workspace packages/codemirror-typst
+    npm pkg set "peerDependencies.@vedivad/typst-web-service=^{{ version }}" --workspace packages/typst-web-yjs
 
 release-tag version:
     git add packages/typst-web-service/package.json packages/typst-web-yjs/package.json packages/codemirror-typst/package.json
-    git commit -m "chore(release): v{{version}}"
-    git tag -a v{{version}} -m "Release v{{version}}"
+    git commit -m "chore(release): v{{ version }}"
+    git tag -a v{{ version }} -m "Release v{{ version }}"
     git push
-    git push origin v{{version}}
+    git push origin v{{ version }}
 
 release version: release-check-clean test build
-    just release-bump {{version}}
-    just release-tag {{version}}
+    just release-bump {{ version }}
+    just release-tag {{ version }}

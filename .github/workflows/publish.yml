@@ -37,10 +37,14 @@ jobs:
       - name: Rewrite workspace dependencies
         run: |
           VERSION=$(node -p "require('./packages/typst-web-service/package.json').version")
+          npm pkg set "peerDependencies.@vedivad/typst-web-service=^${VERSION}" --workspace packages/typst-web-yjs
           cd packages/codemirror-typst && npm pkg set "dependencies.@vedivad/typst-web-service=^${VERSION}"
 
       - name: Publish @vedivad/typst-web-service
         run: npm publish --workspace packages/typst-web-service --access public --provenance
+
+      - name: Publish @vedivad/typst-web-yjs
+        run: npm publish --workspace packages/typst-web-yjs --access public --provenance
 
       - name: Publish @vedivad/codemirror-typst
         run: npm publish --workspace packages/codemirror-typst --access public --provenance
