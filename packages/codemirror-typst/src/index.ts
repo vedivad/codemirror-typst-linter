@@ -62,33 +62,10 @@ export type { CompileSyncOptions } from "./compile-sync.js";
 export type { DiagnosticsPluginOptions } from "./diagnostics-plugin.js";
 
 // ---------------------------------------------------------------------------
-// High-level API: createTypstEditor
+// High-level API: createTypstSetup
 // ---------------------------------------------------------------------------
 
-export interface TypstEditorSyncStrategy {
-  readonly kind: "editor";
-}
-
-export interface TypstExternalSyncStrategy {
-  readonly kind: "external";
-  readonly ready?: Promise<void>;
-  flush?(): Promise<void>;
-  dispose?(): void;
-}
-
-export type TypstSyncStrategy =
-  | TypstEditorSyncStrategy
-  | TypstExternalSyncStrategy;
-
-export function editorSync(): TypstEditorSyncStrategy {
-  return { kind: "editor" };
-}
-
-export function externalSync(): TypstExternalSyncStrategy {
-  return { kind: "external" };
-}
-
-export interface TypstEditorOptions {
+export interface TypstSetupOptions {
   /**
    * Project that owns the VFS and (optionally) the analyzer. Construct one with
    * `new TypstProject({ compiler, analyzer })` and share it across editors that
@@ -97,97 +74,68 @@ export interface TypstEditorOptions {
    * `autoCompile` option on the project itself.
    */
   project: TypstProject;
+  /**
+   * Who owns the canonical text. Required because the wrong choice fails
+   * silently.
+   *
+   * - `"editor-driven"`: CodeMirror is the source of truth. The setup mirrors
+   *   doc/path changes into `project.setText()` on mount and on every edit.
+   * - `"external"`: something else owns the text (Y.js, server, etc.) and
+   *   pushes into the project itself. The setup omits the editor→project
+   *   sync — installing both causes double-writes and lets local edits
+   *   overwrite remote ones that arrived mid-dispatch.
+   */
+  sync: "editor-driven" | "external";
+  /**
+   * Highlighting controller from `createTypstHighlighting()`. Omit to skip
+   * syntax highlighting. The same controller can be passed to multiple setups
+   * to share the underlying shiki highlighter.
+   */
+  highlighting?: TypstHighlightingController;
   /** Code formatter. Omit to disable. */
   formatter?: TypstFormatterOptions;
-  /** Syntax highlighting. Omit for defaults, pass `false` to disable. */
-  highlighting?: TypstHighlightingOptions | false;
-  /**
-   * How editor content is mirrored into the TypstProject.
-   *
-   * - `editorSync()`: CodeMirror pushes doc/path changes into the project.
-   * - `externalSync()` or an external sync handle: caller owns syncing, e.g.
-   *   from Y.js into `project.setText()` / `project.setMany()`.
-   */
-  sync: TypstSyncStrategy;
-}
-
-export interface TypstEditor {
-  readonly extension: Extension;
-  readonly highlighting?: TypstHighlightingController;
 }
 
 /**
- * Create the default Typst editor bundle for CodeMirror. The returned extension
- * can drive compilation through the shared `TypstProject`; subscribe to results
- * via `project.onCompile(...)`, and trigger an out-of-band recompile with
- * `project.compile()`.
+ * Bundle the default Typst CodeMirror extensions: highlighting, lint gutter,
+ * compile-on-edit, diagnostics, and (when the project has an analyzer)
+ * autocompletion and hover. Formatter and highlighting are opt-in; pass them
+ * pre-built so async setup happens once at the call site.
  *
  * The editor's file path is read from the `typstFilePath` facet on the
- * `EditorState`. Attach it per-editor when creating the state:
+ * `EditorState` — attach it per-editor when creating the state.
  *
  * ```ts
- * const typst = await createTypstEditor({
+ * const highlighting = await createTypstHighlighting({ theme: "dark" });
+ * const setup = createTypstSetup({
  *   project,
- *   sync: editorSync(),
+ *   sync: "editor-driven",
+ *   highlighting,
  *   formatter: { instance: formatter, formatOnSave: true },
- *   highlighting: { theme: "dark" },
  * });
  *
  * const state = EditorState.create({
  *   doc,
- *   extensions: [basicSetup, typst.extension, typstFilePath.of("/main.typ")],
+ *   extensions: [basicSetup, ...setup, typstFilePath.of("/main.typ")],
  * });
  * ```
- *
- * Switching files is just `view.setState(otherState)` — the new state's
- * facet value travels along with it, and the compiler plugin reacts.
- *
- * For collaborative or externally-owned documents, pass `externalSync()` or an
- * external sync handle and mirror your source of truth into the project
- * yourself. Diagnostics, completion, hover, highlighting, and formatting still
- * work against that project state.
  */
-export async function createTypstEditor(
-  options: TypstEditorOptions,
-): Promise<TypstEditor> {
-  const { project, sync } = options;
-  const highlighting =
-    options.highlighting === false
-      ? undefined
-      : await createTypstHighlighting(options.highlighting);
-
-  const extensions: Extension[] = [];
-
-  if (highlighting) {
-    extensions.push(highlighting.extension);
-  }
-
-  extensions.push(lintGutter());
-
-  if (sync.kind === "editor") {
-    extensions.push(createTypstCompileSync({ project }));
-  }
-
-  extensions.push(createTypstDiagnostics({ project }));
-
-  if (project.hasAnalyzer) {
-    extensions.push(
-      autocompletion({
-        override: [typstCompletionSource({ project })],
-      }),
-    );
-
-    extensions.push(
-      createTypstHover({
-        project,
-        highlightCode: highlighting?.highlightCode,
-      }),
-    );
-  }
-
-  if (options.formatter) {
-    extensions.push(createTypstFormatter(options.formatter));
-  }
-
-  return { extension: extensions, highlighting };
+export function createTypstSetup(options: TypstSetupOptions): Extension[] {
+  const { project, highlighting, formatter, sync } = options;
+  return [
+    ...(highlighting ? [highlighting.extension] : []),
+    lintGutter(),
+    ...(sync === "editor-driven" ? [createTypstCompileSync({ project })] : []),
+    createTypstDiagnostics({ project }),
+    ...(project.hasAnalyzer
+      ? [
+          autocompletion({ override: [typstCompletionSource({ project })] }),
+          createTypstHover({
+            project,
+            highlightCode: highlighting?.highlightCode,
+          }),
+        ]
+      : []),
+    ...(formatter ? [createTypstFormatter(formatter)] : []),
+  ];
 }

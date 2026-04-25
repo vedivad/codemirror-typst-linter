@@ -1,8 +1,8 @@
 import { EditorState } from "@codemirror/state";
 import { oneDark } from "@codemirror/theme-one-dark";
 import {
-  createTypstEditor,
-  editorSync,
+  createTypstHighlighting,
+  createTypstSetup,
   TypstCompiler,
   TypstProject,
   TypstRenderer,
@@ -29,17 +29,14 @@ project.onCompile(async (result) => {
   }
 });
 
-const typst = await createTypstEditor({
-  project,
-  sync: editorSync(),
-  highlighting: { theme: "dark" },
-});
+const highlighting = await createTypstHighlighting({ theme: "dark" });
+const typstSetup = createTypstSetup({ project, sync: "editor-driven", highlighting });
 
 new EditorView({
   parent: editorEl,
   state: EditorState.create({
     doc: `= Hello, Typst!\n\nType to compile. Errors show in the gutter.\n\n#let greet(name) = [Hello, #name!]\n\n#greet("world")\n`,
-    extensions: [basicSetup, oneDark, typst.extension],
+    extensions: [basicSetup, oneDark, ...typstSetup],
   }),
 });
 

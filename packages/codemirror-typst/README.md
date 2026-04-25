@@ -24,8 +24,8 @@ Syntax highlighting, diagnostics, and compilation — no URLs or config.
 import { EditorView, basicSetup } from "codemirror";
 import { EditorState } from "@codemirror/state";
 import {
-  createTypstEditor,
-  editorSync,
+  createTypstHighlighting,
+  createTypstSetup,
   TypstCompiler,
   TypstProject,
 } from "@vedivad/codemirror-typst";
@@ -33,17 +33,14 @@ import {
 const compiler = await TypstCompiler.create();
 const project = new TypstProject({ compiler });
 
-const typst = await createTypstEditor({
-  project,
-  sync: editorSync(),
-  highlighting: { theme: "dark" },
-});
+const highlighting = await createTypstHighlighting({ theme: "dark" });
+const setup = createTypstSetup({ project, sync: "editor-driven", highlighting });
 
 new EditorView({
   parent: document.querySelector("#app")!,
   state: EditorState.create({
     doc: "= Hello, Typst!",
-    extensions: [basicSetup, typst.extension],
+    extensions: [basicSetup, ...setup],
   }),
 });
 ```
@@ -54,8 +51,8 @@ Adds live SVG preview, autocompletion/hover, and format on save.
 
 ```ts
 import {
-  createTypstEditor,
-  editorSync,
+  createTypstHighlighting,
+  createTypstSetup,
   TypstAnalyzer,
   TypstCompiler,
   TypstFormatter,
@@ -84,11 +81,12 @@ project.onCompile(async (result) => {
   }
 });
 
-const typst = await createTypstEditor({
+const highlighting = await createTypstHighlighting({ theme: "dark" });
+const setup = createTypstSetup({
   project,
-  sync: editorSync(),
+  sync: "editor-driven",
+  highlighting,
   formatter: { instance: formatter, formatOnSave: true },
-  highlighting: { theme: "dark" },
 });
 ```
 
@@ -98,8 +96,7 @@ Attach the `typstFilePath` facet per-editor so each `EditorState` carries its ow
 
 ```ts
 import {
-  createTypstEditor,
-  editorSync,
+  createTypstSetup,
   typstFilePath,
 } from "@vedivad/codemirror-typst";
 
@@ -109,11 +106,8 @@ await project.setMany({
   "/template.typ": "...",
 });
 
-const typst = await createTypstEditor({
-  project,
-  sync: editorSync(),
-});
-const shared = [basicSetup, typst.extension];
+const setup = createTypstSetup({ project, sync: "editor-driven" });
+const shared = [basicSetup, ...setup];
 
 const states = Object.fromEntries(
   project.files.map((path) => [
@@ -129,10 +123,10 @@ const states = Object.fromEntries(
 ## External sync / Y.js
 
 For collaborative editors, let your shared document model own the text and
-mirror it into `TypstProject`. Pass the external sync handle to
-`createTypstEditor` so it does not install the editor-to-project sync
-plugin. Diagnostics, highlighting, analyzer-backed completion/hover, and
-formatting still work against the project state you provide.
+mirror it into `TypstProject`. Pass `sync: "external"` to `createTypstSetup`
+so it does not install the editor-to-project sync plugin. Diagnostics,
+highlighting, analyzer-backed completion/hover, and formatting still work
+against the project state you provide.
 
 ```ts
 import { EditorState } from "@codemirror/state";
@@ -141,7 +135,7 @@ import { syncYTextToTypstProject } from "@vedivad/typst-web-yjs";
 import * as Y from "yjs";
 import { yCollab } from "y-codemirror.next";
 import {
-  createTypstEditor,
+  createTypstSetup,
   typstFilePath,
   TypstProject,
 } from "@vedivad/codemirror-typst";
@@ -161,10 +155,7 @@ const sync = syncYTextToTypstProject({
 });
 await sync.ready;
 
-const typst = await createTypstEditor({
-  project,
-  sync,
-});
+const setup = createTypstSetup({ project, sync: "external" });
 
 new EditorView({
   parent: document.querySelector("#app")!,
@@ -173,7 +164,7 @@ new EditorView({
     extensions: [
       basicSetup,
       yCollab(ytext, provider.awareness, { undoManager }),
-      typst.extension,
+      ...setup,
       typstFilePath.of("/main.typ"),
     ],
   }),
@@ -240,31 +231,27 @@ formatter: {
 
 ## Theme switching
 
-`createTypstEditor` exposes a highlighting controller when highlighting is enabled.
-Call `setTheme` for each mounted `EditorView` that should switch themes:
+`createTypstHighlighting` returns a controller you keep at the call site. Call
+`setTheme(view, alias)` to swap the active theme on a mounted `EditorView`:
 
 ```ts
-const typst = await createTypstEditor({
-  project,
-  sync: editorSync(),
-  highlighting: {
-    themes: { light: "github-light", dark: "github-dark-dimmed" },
-    theme: "light",
-  },
+const highlighting = await createTypstHighlighting({
+  themes: { light: "github-light", dark: "github-dark-dimmed" },
+  theme: "light",
 });
+const setup = createTypstSetup({ project, sync: "editor-driven", highlighting });
 
-typst.highlighting?.setTheme(view, "dark");
+highlighting.setTheme(view, "dark");
 ```
 
-The same highlighting controller may be shared across multiple views, but
-CodeMirror compartments are reconfigured per view. If you install the same
-`typst.extension` in multiple mounted editors, call `setTheme` once per view.
-Use separate editor bundles or highlighting controllers for mounted views that
-should have different active themes.
+The same controller may be shared across multiple views, but CodeMirror
+compartments are reconfigured per view — call `setTheme` once per mounted view.
+Use separate highlighting controllers for views that should have different
+active themes.
 
 ## Granular plugins
 
-`createTypstEditor` composes the default editor bundle. Use the granular
+`createTypstSetup` composes the default extension bundle. Use the granular
 pieces directly when you want custom CodeMirror lint/autocomplete UI, external
 sync, or only part of the Typst feature set:
 

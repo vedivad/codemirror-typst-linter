@@ -1,8 +1,8 @@
 import { Compartment, EditorState } from "@codemirror/state";
 import { oneDark } from "@codemirror/theme-one-dark";
 import {
-  createTypstEditor,
-  editorSync,
+  createTypstHighlighting,
+  createTypstSetup,
   typstFilePath,
   TypstAnalyzer,
   TypstCompiler,
@@ -100,18 +100,19 @@ async function removeFile(path: string) {
 
 // --- Editor extensions ---
 
-const typst = await createTypstEditor({
+const highlighting = await createTypstHighlighting({
+  themes: { light: "github-light", dark: "github-dark-dimmed" },
+  theme: colorTheme,
+});
+const typstSetup = createTypstSetup({
   project,
-  sync: editorSync(),
+  sync: "editor-driven",
+  highlighting,
   formatter: { instance: formatter, formatOnSave: true },
-  highlighting: {
-    themes: { light: "github-light", dark: "github-dark-dimmed" },
-    theme: colorTheme,
-  },
 });
 
 const editorTheme = new Compartment();
-const sharedExtensions = [basicSetup, editorTheme.of([]), typst.extension];
+const sharedExtensions = [basicSetup, editorTheme.of([]), ...typstSetup];
 
 function syncTheme(view: EditorView) {
   document.documentElement.dataset.theme = colorTheme;
@@ -120,7 +121,7 @@ function syncTheme(view: EditorView) {
   view.dispatch({
     effects: editorTheme.reconfigure(colorTheme === "dark" ? oneDark : []),
   });
-  typst.highlighting?.setTheme(view, colorTheme);
+  highlighting.setTheme(view, colorTheme);
 }
 
 const states: Record<string, EditorState> = Object.fromEntries(
