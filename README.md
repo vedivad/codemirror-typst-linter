@@ -8,6 +8,7 @@ Typst editor components for the web — CodeMirror 6 extensions with compilation
 | -------------------------------------------------------------------- | ---------------------------------------- | ----------------------------------------------------------- |
 | [`@vedivad/codemirror-typst`](packages/codemirror-typst/README.md)   | `npm install @vedivad/codemirror-typst`  | CodeMirror 6 editor integration — most users start here     |
 | [`@vedivad/typst-web-service`](packages/typst-web-service/README.md) | `npm install @vedivad/typst-web-service` | Editor-agnostic services (compile, render, format, analyze) |
+| [`@vedivad/typst-web-yjs`](packages/typst-web-yjs/README.md)         | `npm install @vedivad/typst-web-yjs yjs` | Optional Y.js adapters for collaborative Typst projects     |
 
 `@vedivad/codemirror-typst` re-exports everything from `@vedivad/typst-web-service`, so you only need one dependency.
 

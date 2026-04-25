@@ -126,6 +126,7 @@ still work against the project state you provide.
 ```ts
 import { EditorState } from "@codemirror/state";
 import { EditorView, basicSetup } from "codemirror";
+import { syncYTextToTypstProject } from "@vedivad/typst-web-yjs";
 import * as Y from "yjs";
 import { yCollab } from "y-codemirror.next";
 import {
@@ -142,10 +143,12 @@ const project = new TypstProject({
   autoCompile: { debounceMs: 500, maxWaitMs: 2000 },
 });
 
-await project.setText("/main.typ", ytext.toString());
-ytext.observe(() => {
-  project.setText("/main.typ", ytext.toString());
+const sync = syncYTextToTypstProject({
+  project,
+  ytext,
+  path: "/main.typ",
 });
+await sync.ready;
 
 const typstExtensions = await createTypstExtensions({
   project,
@@ -167,10 +170,11 @@ new EditorView({
 ```
 
 For multi-file collaboration, keep a Y.js map of paths to text documents as
-the source of truth. Mirror snapshots or targeted updates into the project with
-`project.setMany()`, `project.setText()`, and `project.remove()`. Use
-`autoCompile.debounceMs` / `maxWaitMs` to coalesce bursts of local and remote
-edits without letting the preview feel stuck.
+the source of truth and sync it with
+`syncYMapToTypstProject({ project, files })` from `@vedivad/typst-web-yjs`.
+The adapter serializes async project writes so bursts of local and remote edits
+settle on the latest Y.js state. Use `autoCompile.debounceMs` / `maxWaitMs` to
+coalesce compiles without letting the preview feel stuck.
 
 ## Compile timing
 

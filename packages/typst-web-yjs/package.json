@@ -1,0 +1,38 @@
+{
+  "name": "@vedivad/typst-web-yjs",
+  "version": "0.9.3",
+  "description": "Y.js adapters for syncing shared Typst documents into TypstProject",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vedivad/typst-web.git",
+    "directory": "packages/typst-web-yjs"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch"
+  },
+  "devDependencies": {
+    "@vedivad/typst-web-service": "workspace:^",
+    "tsup": "^8.0.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.5",
+    "yjs": "^13.6.0"
+  },
+  "peerDependencies": {
+    "@vedivad/typst-web-service": "^0.9.3",
+    "yjs": "^13.6.0"
+  }
+}

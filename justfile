@@ -1,7 +1,10 @@
 build-service:
     cd packages/typst-web-service && bun run build
 
-build-codemirror: build-service
+build-yjs: build-service
+    cd packages/typst-web-yjs && bun run build
+
+build-codemirror: build-yjs
     cd packages/codemirror-typst && bun run build
 
 build: build-codemirror
@@ -34,10 +37,10 @@ release-check-clean:
     git diff --cached --quiet || (echo "Working tree has staged-but-uncommitted changes. Commit/stash first:" && git status --short && exit 1)
 
 release-bump version:
-    npm pkg set version={{version}} --workspace packages/typst-web-service --workspace packages/codemirror-typst
+    npm pkg set version={{version}} --workspace packages/typst-web-service --workspace packages/typst-web-yjs --workspace packages/codemirror-typst
 
 release-tag version:
-    git add packages/typst-web-service/package.json packages/codemirror-typst/package.json
+    git add packages/typst-web-service/package.json packages/typst-web-yjs/package.json packages/codemirror-typst/package.json
     git commit -m "chore(release): v{{version}}"
     git tag -a v{{version}} -m "Release v{{version}}"
     git push
