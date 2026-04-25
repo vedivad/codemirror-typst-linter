@@ -18,10 +18,10 @@ dev: build
     wait
 
 test:
-    bunx vitest run
+    bun run test
 
 test-watch:
-    bunx vitest
+    bun run test:watch
 
 format:
     bun run format
