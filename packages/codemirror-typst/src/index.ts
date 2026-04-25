@@ -88,11 +88,6 @@ export function externalSync(): TypstExternalSyncStrategy {
   return { kind: "external" };
 }
 
-export type TypstHighlightingConfig =
-  | TypstHighlightingOptions
-  | TypstHighlightingController
-  | false;
-
 export interface TypstEditorOptions {
   /**
    * Project that owns the VFS and (optionally) the analyzer. Construct one with
@@ -104,11 +99,8 @@ export interface TypstEditorOptions {
   project: TypstProject;
   /** Code formatter. Omit to disable. */
   formatter?: TypstFormatterOptions;
-  /**
-   * Syntax highlighting. Omit for defaults, pass `false` to disable, or pass an
-   * existing controller to share highlighting across editor views.
-   */
-  highlighting?: TypstHighlightingConfig;
+  /** Syntax highlighting. Omit for defaults, pass `false` to disable. */
+  highlighting?: TypstHighlightingOptions | false;
   /**
    * How editor content is mirrored into the TypstProject.
    *
@@ -122,18 +114,6 @@ export interface TypstEditorOptions {
 export interface TypstEditor {
   readonly extension: Extension;
   readonly highlighting?: TypstHighlightingController;
-}
-
-function isTypstHighlightingController(
-  value: TypstHighlightingConfig | undefined,
-): value is TypstHighlightingController {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "extension" in value &&
-    "setTheme" in value &&
-    "highlightCode" in value
-  );
 }
 
 /**
@@ -174,9 +154,7 @@ export async function createTypstEditor(
   const highlighting =
     options.highlighting === false
       ? undefined
-      : isTypstHighlightingController(options.highlighting)
-        ? options.highlighting
-        : await createTypstHighlighting(options.highlighting);
+      : await createTypstHighlighting(options.highlighting);
 
   const extensions: Extension[] = [];
 

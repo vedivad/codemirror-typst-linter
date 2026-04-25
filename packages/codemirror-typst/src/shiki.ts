@@ -29,25 +29,17 @@ export async function createTypstHighlighting(
   const { default: shiki, synchronousHighlightEffect } =
     await import("codemirror-shiki");
 
-  let themes = options.themes;
-  if (!themes) {
-    if (options.theme === "light") {
-      themes = { light: "github-light" };
-    } else if (options.theme === "dark") {
-      themes = { dark: "github-dark" };
-    } else {
-      themes = { light: "github-light", dark: "github-dark" };
-    }
-  }
-
-  const fallbackAlias = Object.keys(themes)[0] ?? "dark";
-  const defaultAlias = options.theme ?? (themes.dark ? "dark" : fallbackAlias);
-  const resolveTheme = (alias?: string): string => {
-    if (alias && themes[alias]) return themes[alias];
-    return themes[defaultAlias] ?? themes[fallbackAlias] ?? "github-dark";
+  const themes = options.themes ?? {
+    light: "github-light",
+    dark: "github-dark",
   };
-
-  const uniqueThemes = Array.from(new Set(Object.values(themes)));
+  let currentAlias =
+    options.theme ?? (themes.dark ? "dark" : Object.keys(themes)[0]);
+  if (!themes[currentAlias]) {
+    throw new Error(
+      `theme alias "${currentAlias}" not found in themes (${Object.keys(themes).join(", ")})`,
+    );
+  }
 
   const engine =
     options.engine === "oniguruma"
@@ -58,12 +50,11 @@ export async function createTypstHighlighting(
   // re-entrant EditorView.update calls during construction.
   const highlighterPromise = createHighlighter({
     langs: ["typst"],
-    themes: uniqueThemes,
+    themes: Array.from(new Set(Object.values(themes))),
     engine,
   });
   const highlighter = await highlighterPromise;
 
-  let currentTheme = defaultAlias;
   const compartment = new Compartment();
 
   const buildExtension = (theme: string): Extension =>
@@ -73,22 +64,24 @@ export async function createTypstHighlighting(
     const lang = highlighter.getLoadedLanguages().includes(language)
       ? language
       : "typst";
-    return highlighter.codeToHtml(code, {
-      lang,
-      theme: resolveTheme(currentTheme),
-    });
+    return highlighter.codeToHtml(code, { lang, theme: themes[currentAlias] });
   };
 
   return {
-    extension: compartment.of(buildExtension(resolveTheme(currentTheme))),
+    extension: compartment.of(buildExtension(themes[currentAlias])),
     get theme() {
-      return currentTheme;
+      return currentAlias;
     },
     setTheme(view, theme) {
-      currentTheme = theme;
+      if (!themes[theme]) {
+        throw new Error(
+          `theme alias "${theme}" not found in themes (${Object.keys(themes).join(", ")})`,
+        );
+      }
+      currentAlias = theme;
       view.dispatch({
         effects: [
-          compartment.reconfigure(buildExtension(resolveTheme(theme))),
+          compartment.reconfigure(buildExtension(themes[theme])),
           synchronousHighlightEffect.of(null),
         ],
       });

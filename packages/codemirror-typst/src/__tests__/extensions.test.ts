@@ -100,25 +100,6 @@ describe("createTypstEditor sync mode", () => {
     });
   });
 
-  it("reuses an existing highlighting controller", async () => {
-    vi.mocked(createTypstHighlighting).mockClear();
-    const project = mockProject();
-    const highlighting = {
-      extension: { kind: "custom-shiki" },
-      theme: "light",
-      setTheme: vi.fn(),
-      highlightCode: vi.fn(),
-    };
-    const editor = await createTypstEditor({
-      project: project as any,
-      sync: editorSync(),
-      highlighting: highlighting as any,
-    });
-
-    expect(createTypstHighlighting).not.toHaveBeenCalled();
-    expect(editor.highlighting).toBe(highlighting);
-    expect(editor.extension).toContain(highlighting.extension);
-  });
 });
 
 describe("granular public APIs", () => {
