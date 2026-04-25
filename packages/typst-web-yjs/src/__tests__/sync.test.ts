@@ -54,6 +54,7 @@ describe("syncYTextToTypstProject", () => {
     });
 
     await sync.ready;
+    expect(sync.kind).toBe("external");
     expect(project.setText).toHaveBeenCalledWith("/main.typ", "hello");
   });
 
@@ -154,6 +155,7 @@ describe("syncYMapToTypstProject", () => {
     });
 
     await sync.ready;
+    expect(sync.kind).toBe("external");
     expect(project.setMany).toHaveBeenCalledWith({
       "/main.typ": "main",
       "/util.typ": "util",

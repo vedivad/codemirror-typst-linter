@@ -2,6 +2,7 @@ import { EditorState } from "@codemirror/state";
 import { oneDark } from "@codemirror/theme-one-dark";
 import {
   createTypstExtensions,
+  editorSync,
   typstFilePath,
   TypstAnalyzer,
   TypstCompiler,
@@ -97,6 +98,7 @@ async function removeFile(path: string) {
 
 const typstExtensions = await createTypstExtensions({
   project,
+  sync: editorSync(),
   formatter: { instance: formatter, formatOnSave: true },
   highlighting: { theme: "dark" },
 });

@@ -19,12 +19,16 @@ import { basicSetup, EditorView } from "codemirror";
 import { EditorState } from "@codemirror/state";
 import {
   createTypstExtensions,
+  editorSync,
   TypstCompiler,
   TypstProject,
 } from "@vedivad/codemirror-typst";
 
 const project = new TypstProject({ compiler: await TypstCompiler.create() });
-const extensions = await createTypstExtensions({ project });
+const extensions = await createTypstExtensions({
+  project,
+  sync: editorSync(),
+});
 
 new EditorView({
   parent: document.querySelector("#app")!,

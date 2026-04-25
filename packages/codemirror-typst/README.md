@@ -25,6 +25,7 @@ import { EditorView, basicSetup } from "codemirror";
 import { EditorState } from "@codemirror/state";
 import {
   createTypstExtensions,
+  editorSync,
   TypstCompiler,
   TypstProject,
 } from "@vedivad/codemirror-typst";
@@ -34,6 +35,7 @@ const project = new TypstProject({ compiler });
 
 const typstExtensions = await createTypstExtensions({
   project,
+  sync: editorSync(),
   highlighting: { theme: "dark" },
 });
 
@@ -53,6 +55,7 @@ Adds live SVG preview, autocompletion/hover, and format on save.
 ```ts
 import {
   createTypstExtensions,
+  editorSync,
   TypstAnalyzer,
   TypstCompiler,
   TypstFormatter,
@@ -83,6 +86,7 @@ project.onCompile(async (result) => {
 
 const typstExtensions = await createTypstExtensions({
   project,
+  sync: editorSync(),
   formatter: { instance: formatter, formatOnSave: true },
   highlighting: { theme: "dark" },
 });
@@ -93,7 +97,11 @@ const typstExtensions = await createTypstExtensions({
 Attach the `typstFilePath` facet per-editor so each `EditorState` carries its own path. Switching tabs with `view.setState(states[path])` propagates the new path automatically — no external closure or `activeFile` variable required.
 
 ```ts
-import { typstFilePath } from "@vedivad/codemirror-typst";
+import {
+  createTypstExtensions,
+  editorSync,
+  typstFilePath,
+} from "@vedivad/codemirror-typst";
 
 const project = new TypstProject({ compiler, analyzer });
 await project.setMany({
@@ -101,7 +109,10 @@ await project.setMany({
   "/template.typ": "...",
 });
 
-const typstExtensions = await createTypstExtensions({ project });
+const typstExtensions = await createTypstExtensions({
+  project,
+  sync: editorSync(),
+});
 const shared = [basicSetup, ...typstExtensions];
 
 const states = Object.fromEntries(
@@ -118,10 +129,10 @@ const states = Object.fromEntries(
 ## External sync / Y.js
 
 For collaborative editors, let your shared document model own the text and
-mirror it into `TypstProject`. Pass `sync: "external"` so
-`createTypstExtensions` does not install the editor-to-project sync plugin.
-Diagnostics, highlighting, analyzer-backed completion/hover, and formatting
-still work against the project state you provide.
+mirror it into `TypstProject`. Pass the external sync handle to
+`createTypstExtensions` so it does not install the editor-to-project sync
+plugin. Diagnostics, highlighting, analyzer-backed completion/hover, and
+formatting still work against the project state you provide.
 
 ```ts
 import { EditorState } from "@codemirror/state";
@@ -152,7 +163,7 @@ await sync.ready;
 
 const typstExtensions = await createTypstExtensions({
   project,
-  sync: "external",
+  sync,
 });
 
 new EditorView({

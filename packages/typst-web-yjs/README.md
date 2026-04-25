@@ -30,9 +30,9 @@ const sync = syncYTextToTypstProject({
 await sync.ready;
 ```
 
-Use this with `createTypstExtensions({ project, sync: "external" })` so
-CodeMirror reads and writes through your Y.js binding while `TypstProject` stays
-mirrored for diagnostics, completion, hover, and preview.
+Use this with `createTypstExtensions({ project, sync })` so CodeMirror reads and
+writes through your Y.js binding while `TypstProject` stays mirrored for
+diagnostics, completion, hover, and preview.
 
 ## Multi-file project
 

@@ -2,6 +2,7 @@ import { EditorState } from "@codemirror/state";
 import { oneDark } from "@codemirror/theme-one-dark";
 import {
   createTypstExtensions,
+  editorSync,
   TypstCompiler,
   TypstProject,
   TypstRenderer,
@@ -30,6 +31,7 @@ project.onCompile(async (result) => {
 
 const typstExtensions = await createTypstExtensions({
   project,
+  sync: editorSync(),
   highlighting: { theme: "dark" },
 });
 

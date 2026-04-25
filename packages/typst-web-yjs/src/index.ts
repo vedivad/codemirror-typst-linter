@@ -2,6 +2,7 @@ import type { Path, TypstProject } from "@vedivad/typst-web-service";
 import * as Y from "yjs";
 
 export interface TypstYjsSync {
+  readonly kind: "external";
   readonly ready: Promise<void>;
   flush(): Promise<void>;
   dispose(): void;
@@ -29,6 +30,7 @@ export interface SyncYMapToTypstProjectOptions {
 type WriteLatest = () => Promise<void>;
 
 class SerializedSync implements TypstYjsSync {
+  readonly kind = "external";
   private dirty = false;
   private disposed = false;
   private running: Promise<void> | undefined;
@@ -91,6 +93,7 @@ export function syncYTextToTypstProject(
   ytext.observe(observer);
 
   return {
+    kind: "external",
     ready: sync.ready,
     flush: () => sync.flush(),
     dispose: () => {
@@ -222,6 +225,7 @@ export function syncYMapToTypstProject(
   files.observe(mapObserver);
 
   return {
+    kind: "external",
     ready: sync.ready,
     flush: () => sync.flush(),
     dispose: () => {

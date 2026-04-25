@@ -22,6 +22,8 @@ import { createTypstDiagnostics } from "../diagnostics-plugin.js";
 import {
   createTypstExtensions,
   createTypstHover,
+  editorSync,
+  externalSync,
   typstCompletionSource,
 } from "../index.js";
 
@@ -30,9 +32,12 @@ function mockProject() {
 }
 
 describe("createTypstExtensions sync mode", () => {
-  it("includes compile sync by default", async () => {
+  it("includes compile sync in editor sync mode", async () => {
     const project = mockProject();
-    const extensions = await createTypstExtensions({ project: project as any });
+    const extensions = await createTypstExtensions({
+      project: project as any,
+      sync: editorSync(),
+    });
 
     expect(createTypstCompileSync).toHaveBeenCalledWith({ project });
     expect(createTypstDiagnostics).toHaveBeenCalledWith({ project });
@@ -46,7 +51,22 @@ describe("createTypstExtensions sync mode", () => {
     const project = mockProject();
     const extensions = await createTypstExtensions({
       project: project as any,
-      sync: "external",
+      sync: externalSync(),
+    });
+
+    expect(createTypstCompileSync).not.toHaveBeenCalled();
+    expect(createTypstDiagnostics).toHaveBeenCalledWith({ project });
+    expect(extensions).not.toContainEqual({ kind: "compile-sync" });
+    expect(extensions).toContainEqual({ kind: "diagnostics" });
+  });
+
+  it("accepts structural external sync handles", async () => {
+    vi.mocked(createTypstCompileSync).mockClear();
+    vi.mocked(createTypstDiagnostics).mockClear();
+    const project = mockProject();
+    const extensions = await createTypstExtensions({
+      project: project as any,
+      sync: { kind: "external", ready: Promise.resolve() },
     });
 
     expect(createTypstCompileSync).not.toHaveBeenCalled();
@@ -59,6 +79,8 @@ describe("createTypstExtensions sync mode", () => {
 describe("granular public APIs", () => {
   it("exports hover and completion helpers from the package entrypoint", () => {
     expect(createTypstHover).toBeTypeOf("function");
+    expect(editorSync).toBeTypeOf("function");
+    expect(externalSync).toBeTypeOf("function");
     expect(typstCompletionSource).toBeTypeOf("function");
   });
 });

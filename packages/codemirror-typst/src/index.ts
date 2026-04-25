@@ -66,6 +66,29 @@ export type { DiagnosticsPluginOptions } from "./diagnostics-plugin.js";
 // High-level API: createTypstExtensions
 // ---------------------------------------------------------------------------
 
+export interface TypstEditorSyncStrategy {
+  readonly kind: "editor";
+}
+
+export interface TypstExternalSyncStrategy {
+  readonly kind: "external";
+  readonly ready?: Promise<void>;
+  flush?(): Promise<void>;
+  dispose?(): void;
+}
+
+export type TypstSyncStrategy =
+  | TypstEditorSyncStrategy
+  | TypstExternalSyncStrategy;
+
+export function editorSync(): TypstEditorSyncStrategy {
+  return { kind: "editor" };
+}
+
+export function externalSync(): TypstExternalSyncStrategy {
+  return { kind: "external" };
+}
+
 export interface TypstExtensionsOptions {
   /**
    * Project that owns the VFS and (optionally) the analyzer. Construct one with
@@ -82,11 +105,11 @@ export interface TypstExtensionsOptions {
   /**
    * How editor content is mirrored into the TypstProject.
    *
-   * - "editor" (default): CodeMirror pushes doc/path changes into the project.
-   * - "external": caller owns syncing, e.g. from Y.js observers via
-   *   `project.setText()` / `project.setMany()`.
+   * - `editorSync()`: CodeMirror pushes doc/path changes into the project.
+   * - `externalSync()` or an external sync handle: caller owns syncing, e.g.
+   *   from Y.js into `project.setText()` / `project.setMany()`.
    */
-  sync?: "editor" | "external";
+  sync: TypstSyncStrategy;
 }
 
 /**
@@ -101,6 +124,7 @@ export interface TypstExtensionsOptions {
  * ```ts
  * const typstExtensions = await createTypstExtensions({
  *   project,
+ *   sync: editorSync(),
  *   formatter: { instance: formatter, formatOnSave: true },
  *   highlighting: { theme: "dark" },
  * });
@@ -115,21 +139,21 @@ export interface TypstExtensionsOptions {
  * Switching files is just `view.setState(otherState)` — the new state's
  * facet value travels along with it, and the compiler plugin reacts.
  *
- * For collaborative or externally-owned documents, pass `sync: "external"`
- * and mirror your source of truth into the project yourself. Diagnostics,
- * completion, hover, highlighting, and formatting still work against that
- * project state.
+ * For collaborative or externally-owned documents, pass `externalSync()` or an
+ * external sync handle and mirror your source of truth into the project
+ * yourself. Diagnostics, completion, hover, highlighting, and formatting still
+ * work against that project state.
  */
 export async function createTypstExtensions(
   options: TypstExtensionsOptions,
 ): Promise<Extension[]> {
-  const { project, sync = "editor" } = options;
+  const { project, sync } = options;
 
   const shiki = await createTypstShikiHighlighting(options.highlighting);
 
   const extensions: Extension[] = [shiki.extension, lintGutter()];
 
-  if (sync !== "external") {
+  if (sync.kind === "editor") {
     extensions.push(createTypstCompileSync({ project }));
   }
 
