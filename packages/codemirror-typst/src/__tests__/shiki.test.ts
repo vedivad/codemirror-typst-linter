@@ -73,4 +73,19 @@ describe("createTypstHighlighting", () => {
       { lang: "javascript", theme: "github-dark-dimmed" },
     );
   });
+
+  it("accepts custom theme aliases", async () => {
+    const highlighting = await createTypstHighlighting({
+      themes: { sepia: "github-light", night: "github-dark" },
+      theme: "sepia",
+    });
+
+    expect(highlighting.theme).toBe("sepia");
+    highlighting.highlightCode("#let x = 1", "typst");
+
+    expect(mocks.highlighter.codeToHtml).toHaveBeenLastCalledWith(
+      "#let x = 1",
+      { lang: "typst", theme: "github-light" },
+    );
+  });
 });

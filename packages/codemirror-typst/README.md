@@ -259,6 +259,8 @@ typst.highlighting?.setTheme(view, "dark");
 The same highlighting controller may be shared across multiple views, but
 CodeMirror compartments are reconfigured per view. If you install the same
 `typst.extension` in multiple mounted editors, call `setTheme` once per view.
+Use separate editor bundles or highlighting controllers for mounted views that
+should have different active themes.
 
 ## Granular plugins
 

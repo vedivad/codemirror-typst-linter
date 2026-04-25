@@ -2,12 +2,10 @@ import { Compartment, type Extension } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
 
 export interface TypstHighlightingOptions {
-  /** Shorthand: "dark" uses github-dark, "light" uses github-light. */
-  theme?: "dark" | "light";
+  /** Initial theme alias to use. Defaults to "dark" when available. */
+  theme?: string;
   /** Full theme map. Overrides `theme` shorthand if both are set. */
   themes?: Record<string, string>;
-  /** Initial theme alias to use. Must exist in `themes`. */
-  defaultColor?: string;
   /** Regex engine used by shiki. Default: "javascript". */
   engine?: "javascript" | "oniguruma";
 }
@@ -43,10 +41,7 @@ export async function createTypstHighlighting(
   }
 
   const fallbackAlias = Object.keys(themes)[0] ?? "dark";
-  const defaultAlias =
-    options.defaultColor ??
-    options.theme ??
-    (themes.dark ? "dark" : fallbackAlias);
+  const defaultAlias = options.theme ?? (themes.dark ? "dark" : fallbackAlias);
   const resolveTheme = (alias?: string): string => {
     if (alias && themes[alias]) return themes[alias];
     return themes[defaultAlias] ?? themes[fallbackAlias] ?? "github-dark";
@@ -68,7 +63,7 @@ export async function createTypstHighlighting(
   });
   const highlighter = await highlighterPromise;
 
-  let currentTheme = options.defaultColor ?? options.theme ?? defaultAlias;
+  let currentTheme = defaultAlias;
   const compartment = new Compartment();
 
   const buildExtension = (theme: string): Extension =>
