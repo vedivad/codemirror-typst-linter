@@ -14,8 +14,9 @@ import { basicSetup, EditorView } from "codemirror";
 import tinymistWasmUrl from "tinymist-web/pkg/tinymist_bg.wasm?url";
 import { updateDiagnostics } from "./diagnostics";
 import { files } from "./files";
+import { type AddFileResult, renderTabs, showNewFileInput } from "./tabs";
 
-// --- Typst setup ---
+// --- DOM refs ---
 
 const diagnosticsEl = document.getElementById("diagnostics")!;
 const previewEl = document.getElementById("preview")!;
@@ -25,6 +26,8 @@ const exportBtn = document.getElementById("export-pdf") as HTMLButtonElement;
 const themeToggleBtn = document.getElementById(
   "theme-toggle",
 ) as HTMLButtonElement;
+
+// --- Typst services ---
 
 const [formatter, compiler, renderer, analyzer] = await Promise.all([
   TypstFormatter.create({ tab_spaces: 2, max_width: 80 }),
@@ -61,42 +64,6 @@ project.onCompile(async (result) => {
       .join("")}</div>`;
   }
 });
-
-// --- File management ---
-
-type AddFileResult = { ok: true } | { ok: false; error: string };
-
-async function addFile(rawName: string): Promise<AddFileResult> {
-  let path = rawName.trim();
-  if (!path) return { ok: false, error: "Name required" };
-  if (!path.endsWith(".typ")) path += ".typ";
-  if (!path.startsWith("/")) path = "/" + path;
-  if (project.files.includes(path)) {
-    return { ok: false, error: `"${path}" already exists` };
-  }
-
-  await project.setText(path, "");
-  states[path] = EditorState.create({
-    doc: "",
-    extensions: [...sharedExtensions, typstFilePath.of(path)],
-  });
-  switchTab(path);
-  return { ok: true };
-}
-
-async function removeFile(path: string) {
-  const paths = project.files;
-  if (paths.length <= 1) return; // must keep at least one file
-  const idx = paths.indexOf(path);
-  delete states[path];
-  await project.remove(path);
-  if (activeFile === path) {
-    const remaining = project.files;
-    switchTab(remaining[Math.max(0, idx - 1)]);
-  } else {
-    renderTabs();
-  }
-}
 
 // --- Editor extensions ---
 
@@ -153,108 +120,52 @@ function switchTab(path: string) {
   }
 
   syncTheme(activeView);
-  renderTabs();
+  rerenderTabs();
 }
 
-function renderTabs() {
-  tabsEl.innerHTML = "";
+function rerenderTabs() {
+  renderTabs({
+    root: tabsEl,
+    paths: project.files,
+    activeFile,
+    onSelect: switchTab,
+    onClose: removeFile,
+    onAdd: () => showNewFileInput({ root: tabsEl, onConfirm: addFile }),
+  });
+}
 
-  const paths = project.files;
-  for (const path of paths) {
-    const tabContainer = document.createElement("div");
-    tabContainer.className = "tab-container";
+// --- File management ---
 
-    const tab = document.createElement("button");
-    tab.className = `tab${path === activeFile ? " active" : ""}`;
-    tab.textContent = path.replace(/^\//, "");
-    tab.onclick = () => switchTab(path);
-    tabContainer.appendChild(tab);
-
-    if (paths.length > 1) {
-      const closeBtn = document.createElement("button");
-      closeBtn.className = "tab-close";
-      closeBtn.textContent = "×";
-      closeBtn.title = `Close ${path}`;
-      closeBtn.onclick = async (e) => {
-        e.stopPropagation();
-        await removeFile(path);
-      };
-      tabContainer.appendChild(closeBtn);
-    }
-
-    tabsEl.appendChild(tabContainer);
+async function addFile(rawName: string): Promise<AddFileResult> {
+  let path = rawName.trim();
+  if (!path) return { ok: false, error: "Name required" };
+  if (!path.endsWith(".typ")) path += ".typ";
+  if (!path.startsWith("/")) path = "/" + path;
+  if (project.files.includes(path)) {
+    return { ok: false, error: `"${path}" already exists` };
   }
 
-  // Add "new file" button
-  const addBtn = document.createElement("button");
-  addBtn.className = "tab-add";
-  addBtn.textContent = "+";
-  addBtn.title = "Add new file";
-  addBtn.onclick = () => showNewFileInput();
-  tabsEl.appendChild(addBtn);
+  await project.setText(path, "");
+  states[path] = EditorState.create({
+    doc: "",
+    extensions: [...sharedExtensions, typstFilePath.of(path)],
+  });
+  switchTab(path);
+  return { ok: true };
 }
 
-function showNewFileInput() {
-  // Check if input is already visible
-  const existing = tabsEl.querySelector(".tab-new-file-input");
-  if (existing) return;
-
-  const inputContainer = document.createElement("div");
-  inputContainer.className = "tab-new-file-input";
-
-  const input = document.createElement("input");
-  input.type = "text";
-  input.placeholder = "filename.typ";
-  input.className = "new-file-input";
-
-  const errorEl = document.createElement("span");
-  errorEl.className = "new-file-error";
-  errorEl.hidden = true;
-
-  const clearError = () => {
-    input.classList.remove("invalid");
-    errorEl.hidden = true;
-    errorEl.textContent = "";
-  };
-
-  const showError = (message: string) => {
-    input.classList.add("invalid");
-    errorEl.textContent = message;
-    errorEl.hidden = false;
-  };
-
-  input.addEventListener("input", clearError);
-
-  const confirmBtn = document.createElement("button");
-  confirmBtn.textContent = "Add";
-  confirmBtn.className = "new-file-confirm";
-  confirmBtn.onclick = async () => {
-    const result = await addFile(input.value);
-    if (result.ok) {
-      inputContainer.remove();
-    } else {
-      showError(result.error);
-      input.focus();
-      input.select();
-    }
-  };
-
-  const cancelBtn = document.createElement("button");
-  cancelBtn.textContent = "Cancel";
-  cancelBtn.className = "new-file-cancel";
-  cancelBtn.onclick = () => inputContainer.remove();
-
-  inputContainer.appendChild(input);
-  inputContainer.appendChild(confirmBtn);
-  inputContainer.appendChild(cancelBtn);
-  inputContainer.appendChild(errorEl);
-  tabsEl.appendChild(inputContainer);
-
-  input.focus();
-  input.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") confirmBtn.click();
-    if (e.key === "Escape") cancelBtn.click();
-  });
+async function removeFile(path: string) {
+  const paths = project.files;
+  if (paths.length <= 1) return; // must keep at least one file
+  const idx = paths.indexOf(path);
+  delete states[path];
+  await project.remove(path);
+  if (activeFile === path) {
+    const remaining = project.files;
+    switchTab(remaining[Math.max(0, idx - 1)]);
+  } else {
+    rerenderTabs();
+  }
 }
 
 // --- PDF export ---
