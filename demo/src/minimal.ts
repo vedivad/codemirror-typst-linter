@@ -30,7 +30,11 @@ project.onCompile(async (result) => {
 });
 
 const highlighting = await createTypstHighlighting({ theme: "dark" });
-const typstSetup = createTypstSetup({ project, sync: "editor-driven", highlighting });
+const typstSetup = createTypstSetup({
+  project,
+  sync: "editor-driven",
+  highlighting,
+});
 
 new EditorView({
   parent: editorEl,

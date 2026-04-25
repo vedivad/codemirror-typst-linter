@@ -34,7 +34,11 @@ const compiler = await TypstCompiler.create();
 const project = new TypstProject({ compiler });
 
 const highlighting = await createTypstHighlighting({ theme: "dark" });
-const setup = createTypstSetup({ project, sync: "editor-driven", highlighting });
+const setup = createTypstSetup({
+  project,
+  sync: "editor-driven",
+  highlighting,
+});
 
 new EditorView({
   parent: document.querySelector("#app")!,
@@ -95,10 +99,7 @@ const setup = createTypstSetup({
 Attach the `typstFilePath` facet per-editor so each `EditorState` carries its own path. Switching tabs with `view.setState(states[path])` propagates the new path automatically — no external closure or `activeFile` variable required.
 
 ```ts
-import {
-  createTypstSetup,
-  typstFilePath,
-} from "@vedivad/codemirror-typst";
+import { createTypstSetup, typstFilePath } from "@vedivad/codemirror-typst";
 
 const project = new TypstProject({ compiler, analyzer });
 await project.setMany({
@@ -239,7 +240,11 @@ const highlighting = await createTypstHighlighting({
   themes: { light: "github-light", dark: "github-dark-dimmed" },
   theme: "light",
 });
-const setup = createTypstSetup({ project, sync: "editor-driven", highlighting });
+const setup = createTypstSetup({
+  project,
+  sync: "editor-driven",
+  highlighting,
+});
 
 highlighting.setTheme(view, "dark");
 ```
