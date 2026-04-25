@@ -1,6 +1,6 @@
 {
   "name": "@vedivad/typst-web-service",
-  "version": "0.9.3",
+  "version": "0.10.0",
   "description": "Editor-agnostic Typst compilation service running in a Web Worker",
   "license": "MIT",
   "repository": {
