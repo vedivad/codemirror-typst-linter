@@ -1,7 +1,7 @@
-import type { Extension } from "@codemirror/state";
+import { Compartment, type Extension } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
 
-export interface TypstShikiOptions {
+export interface TypstHighlightingOptions {
   /** Shorthand: "dark" uses github-dark, "light" uses github-light. */
   theme?: "dark" | "light";
   /** Full theme map. Overrides `theme` shorthand if both are set. */
@@ -12,16 +12,17 @@ export interface TypstShikiOptions {
   engine?: "javascript" | "oniguruma";
 }
 
-export interface TypstShikiHighlighting {
+export interface TypstHighlightingController {
   extension: Extension;
-  getTheme: (name?: string, view?: EditorView) => Extension;
+  readonly theme: string;
+  setTheme(view: EditorView, theme: string): void;
   /** Highlight a code string to HTML. Falls back to Typst highlighting for unknown languages. */
-  highlightCode: (code: string, language: string) => string;
+  highlightCode(code: string, language: string): string;
 }
 
-export async function createTypstShikiHighlighting(
-  options: TypstShikiOptions = {},
-): Promise<TypstShikiHighlighting> {
+export async function createTypstHighlighting(
+  options: TypstHighlightingOptions = {},
+): Promise<TypstHighlightingController> {
   const {
     createHighlighter,
     createJavaScriptRegexEngine,
@@ -66,7 +67,8 @@ export async function createTypstShikiHighlighting(
   });
   const highlighter = await highlighterPromise;
 
-  const defaultTheme = resolveTheme(options.defaultColor);
+  let currentTheme = options.defaultColor ?? options.theme ?? defaultAlias;
+  const compartment = new Compartment();
 
   const buildExtension = (theme: string): Extension =>
     shiki({ highlighter: highlighterPromise, language: "typst", theme });
@@ -75,18 +77,23 @@ export async function createTypstShikiHighlighting(
     const lang = highlighter.getLoadedLanguages().includes(language)
       ? language
       : "typst";
-    return highlighter.codeToHtml(code, { lang, theme: defaultTheme });
+    return highlighter.codeToHtml(code, {
+      lang,
+      theme: resolveTheme(currentTheme),
+    });
   };
 
   return {
-    extension: buildExtension(defaultTheme),
-    getTheme: (name?: string) => buildExtension(resolveTheme(name)),
+    extension: compartment.of(buildExtension(resolveTheme(currentTheme))),
+    get theme() {
+      return currentTheme;
+    },
+    setTheme(view, theme) {
+      currentTheme = theme;
+      view.dispatch({
+        effects: compartment.reconfigure(buildExtension(resolveTheme(theme))),
+      });
+    },
     highlightCode,
   };
-}
-
-export async function createTypstShikiExtension(
-  options: TypstShikiOptions = {},
-): Promise<Extension> {
-  return (await createTypstShikiHighlighting(options)).extension;
 }

@@ -13,11 +13,11 @@ import { createTypstFormatter } from "./formatter.js";
 import type { TypstHoverOptions } from "./hover.js";
 import { createTypstHover } from "./hover.js";
 import type { CodeHighlighter } from "./hover-markdown.js";
-import type { TypstShikiHighlighting, TypstShikiOptions } from "./shiki.js";
-import {
-  createTypstShikiExtension,
-  createTypstShikiHighlighting,
+import type {
+  TypstHighlightingController,
+  TypstHighlightingOptions,
 } from "./shiki.js";
+import { createTypstHighlighting } from "./shiki.js";
 import {
   diagnosticLocation,
   groupDiagnosticsByFile,
@@ -43,8 +43,8 @@ export type {
   TypstCompletionOptions,
   TypstHoverOptions,
   CodeHighlighter,
-  TypstShikiHighlighting,
-  TypstShikiOptions,
+  TypstHighlightingController,
+  TypstHighlightingOptions,
 };
 export {
   createTypstCompileSync,
@@ -52,8 +52,7 @@ export {
   typstCompletionSource,
   createTypstDiagnostics,
   createTypstFormatter,
-  createTypstShikiExtension,
-  createTypstShikiHighlighting,
+  createTypstHighlighting,
   diagnosticLocation,
   groupDiagnosticsByFile,
   toCMDiagnostic,
@@ -63,7 +62,7 @@ export type { CompileSyncOptions } from "./compile-sync.js";
 export type { DiagnosticsPluginOptions } from "./diagnostics-plugin.js";
 
 // ---------------------------------------------------------------------------
-// High-level API: createTypstExtensions
+// High-level API: createTypstEditor
 // ---------------------------------------------------------------------------
 
 export interface TypstEditorSyncStrategy {
@@ -89,7 +88,12 @@ export function externalSync(): TypstExternalSyncStrategy {
   return { kind: "external" };
 }
 
-export interface TypstExtensionsOptions {
+export type TypstHighlightingConfig =
+  | TypstHighlightingOptions
+  | TypstHighlightingController
+  | false;
+
+export interface TypstEditorOptions {
   /**
    * Project that owns the VFS and (optionally) the analyzer. Construct one with
    * `new TypstProject({ compiler, analyzer })` and share it across editors that
@@ -100,8 +104,11 @@ export interface TypstExtensionsOptions {
   project: TypstProject;
   /** Code formatter. Omit to disable. */
   formatter?: TypstFormatterOptions;
-  /** Syntax highlighting. Omit for defaults (github-dark). */
-  highlighting?: TypstShikiOptions;
+  /**
+   * Syntax highlighting. Omit for defaults, pass `false` to disable, or pass an
+   * existing controller to share highlighting across editor views.
+   */
+  highlighting?: TypstHighlightingConfig;
   /**
    * How editor content is mirrored into the TypstProject.
    *
@@ -112,8 +119,25 @@ export interface TypstExtensionsOptions {
   sync: TypstSyncStrategy;
 }
 
+export interface TypstEditor {
+  readonly extension: Extension;
+  readonly highlighting?: TypstHighlightingController;
+}
+
+function isTypstHighlightingController(
+  value: TypstHighlightingConfig | undefined,
+): value is TypstHighlightingController {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "extension" in value &&
+    "setTheme" in value &&
+    "highlightCode" in value
+  );
+}
+
 /**
- * Create the default Typst extension set for CodeMirror. The returned extensions
+ * Create the default Typst editor bundle for CodeMirror. The returned extension
  * can drive compilation through the shared `TypstProject`; subscribe to results
  * via `project.onCompile(...)`, and trigger an out-of-band recompile with
  * `project.compile()`.
@@ -122,17 +146,16 @@ export interface TypstExtensionsOptions {
  * `EditorState`. Attach it per-editor when creating the state:
  *
  * ```ts
- * const typstExtensions = await createTypstExtensions({
+ * const typst = await createTypstEditor({
  *   project,
  *   sync: editorSync(),
  *   formatter: { instance: formatter, formatOnSave: true },
  *   highlighting: { theme: "dark" },
  * });
  *
- * const shared = [basicSetup, ...typstExtensions];
  * const state = EditorState.create({
  *   doc,
- *   extensions: [...shared, typstFilePath.of("/main.typ")],
+ *   extensions: [basicSetup, typst.extension, typstFilePath.of("/main.typ")],
  * });
  * ```
  *
@@ -144,14 +167,24 @@ export interface TypstExtensionsOptions {
  * yourself. Diagnostics, completion, hover, highlighting, and formatting still
  * work against that project state.
  */
-export async function createTypstExtensions(
-  options: TypstExtensionsOptions,
-): Promise<Extension[]> {
+export async function createTypstEditor(
+  options: TypstEditorOptions,
+): Promise<TypstEditor> {
   const { project, sync } = options;
+  const highlighting =
+    options.highlighting === false
+      ? undefined
+      : isTypstHighlightingController(options.highlighting)
+        ? options.highlighting
+        : await createTypstHighlighting(options.highlighting);
 
-  const shiki = await createTypstShikiHighlighting(options.highlighting);
+  const extensions: Extension[] = [];
 
-  const extensions: Extension[] = [shiki.extension, lintGutter()];
+  if (highlighting) {
+    extensions.push(highlighting.extension);
+  }
+
+  extensions.push(lintGutter());
 
   if (sync.kind === "editor") {
     extensions.push(createTypstCompileSync({ project }));
@@ -169,7 +202,7 @@ export async function createTypstExtensions(
     extensions.push(
       createTypstHover({
         project,
-        highlightCode: shiki.highlightCode,
+        highlightCode: highlighting?.highlightCode,
       }),
     );
   }
@@ -178,5 +211,5 @@ export async function createTypstExtensions(
     extensions.push(createTypstFormatter(options.formatter));
   }
 
-  return extensions;
+  return { extension: extensions, highlighting };
 }

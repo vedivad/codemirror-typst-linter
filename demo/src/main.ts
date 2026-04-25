@@ -1,7 +1,7 @@
 import { EditorState } from "@codemirror/state";
 import { oneDark } from "@codemirror/theme-one-dark";
 import {
-  createTypstExtensions,
+  createTypstEditor,
   editorSync,
   typstFilePath,
   TypstAnalyzer,
@@ -96,14 +96,14 @@ async function removeFile(path: string) {
 
 // --- Editor extensions ---
 
-const typstExtensions = await createTypstExtensions({
+const typst = await createTypstEditor({
   project,
   sync: editorSync(),
   formatter: { instance: formatter, formatOnSave: true },
-  highlighting: { theme: "dark" },
+  highlighting: { theme: "light" },
 });
 
-const sharedExtensions = [basicSetup, oneDark, ...typstExtensions];
+const sharedExtensions = [basicSetup, oneDark, typst.extension];
 
 const states: Record<string, EditorState> = Object.fromEntries(
   project.files.map((path) => [

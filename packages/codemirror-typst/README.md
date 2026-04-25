@@ -24,7 +24,7 @@ Syntax highlighting, diagnostics, and compilation — no URLs or config.
 import { EditorView, basicSetup } from "codemirror";
 import { EditorState } from "@codemirror/state";
 import {
-  createTypstExtensions,
+  createTypstEditor,
   editorSync,
   TypstCompiler,
   TypstProject,
@@ -33,7 +33,7 @@ import {
 const compiler = await TypstCompiler.create();
 const project = new TypstProject({ compiler });
 
-const typstExtensions = await createTypstExtensions({
+const typst = await createTypstEditor({
   project,
   sync: editorSync(),
   highlighting: { theme: "dark" },
@@ -43,7 +43,7 @@ new EditorView({
   parent: document.querySelector("#app")!,
   state: EditorState.create({
     doc: "= Hello, Typst!",
-    extensions: [basicSetup, ...typstExtensions],
+    extensions: [basicSetup, typst.extension],
   }),
 });
 ```
@@ -54,7 +54,7 @@ Adds live SVG preview, autocompletion/hover, and format on save.
 
 ```ts
 import {
-  createTypstExtensions,
+  createTypstEditor,
   editorSync,
   TypstAnalyzer,
   TypstCompiler,
@@ -84,7 +84,7 @@ project.onCompile(async (result) => {
   }
 });
 
-const typstExtensions = await createTypstExtensions({
+const typst = await createTypstEditor({
   project,
   sync: editorSync(),
   formatter: { instance: formatter, formatOnSave: true },
@@ -98,7 +98,7 @@ Attach the `typstFilePath` facet per-editor so each `EditorState` carries its ow
 
 ```ts
 import {
-  createTypstExtensions,
+  createTypstEditor,
   editorSync,
   typstFilePath,
 } from "@vedivad/codemirror-typst";
@@ -109,11 +109,11 @@ await project.setMany({
   "/template.typ": "...",
 });
 
-const typstExtensions = await createTypstExtensions({
+const typst = await createTypstEditor({
   project,
   sync: editorSync(),
 });
-const shared = [basicSetup, ...typstExtensions];
+const shared = [basicSetup, typst.extension];
 
 const states = Object.fromEntries(
   project.files.map((path) => [
@@ -130,7 +130,7 @@ const states = Object.fromEntries(
 
 For collaborative editors, let your shared document model own the text and
 mirror it into `TypstProject`. Pass the external sync handle to
-`createTypstExtensions` so it does not install the editor-to-project sync
+`createTypstEditor` so it does not install the editor-to-project sync
 plugin. Diagnostics, highlighting, analyzer-backed completion/hover, and
 formatting still work against the project state you provide.
 
@@ -141,7 +141,7 @@ import { syncYTextToTypstProject } from "@vedivad/typst-web-yjs";
 import * as Y from "yjs";
 import { yCollab } from "y-codemirror.next";
 import {
-  createTypstExtensions,
+  createTypstEditor,
   typstFilePath,
   TypstProject,
 } from "@vedivad/codemirror-typst";
@@ -161,7 +161,7 @@ const sync = syncYTextToTypstProject({
 });
 await sync.ready;
 
-const typstExtensions = await createTypstExtensions({
+const typst = await createTypstEditor({
   project,
   sync,
 });
@@ -173,7 +173,7 @@ new EditorView({
     extensions: [
       basicSetup,
       yCollab(ytext, provider.awareness, { undoManager }),
-      ...typstExtensions,
+      typst.extension,
       typstFilePath.of("/main.typ"),
     ],
   }),
@@ -238,9 +238,31 @@ formatter: {
 }
 ```
 
+## Theme switching
+
+`createTypstEditor` exposes a highlighting controller when highlighting is enabled.
+Call `setTheme` for each mounted `EditorView` that should switch themes:
+
+```ts
+const typst = await createTypstEditor({
+  project,
+  sync: editorSync(),
+  highlighting: {
+    themes: { light: "github-light", dark: "github-dark-dimmed" },
+    theme: "light",
+  },
+});
+
+typst.highlighting?.setTheme(view, "dark");
+```
+
+The same highlighting controller may be shared across multiple views, but
+CodeMirror compartments are reconfigured per view. If you install the same
+`typst.extension` in multiple mounted editors, call `setTheme` once per view.
+
 ## Granular plugins
 
-`createTypstExtensions` composes the default editor bundle. Use the granular
+`createTypstEditor` composes the default editor bundle. Use the granular
 pieces directly when you want custom CodeMirror lint/autocomplete UI, external
 sync, or only part of the Typst feature set:
 

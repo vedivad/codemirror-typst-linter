@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("../shiki.js", () => ({
-  createTypstShikiExtension: vi.fn(),
-  createTypstShikiHighlighting: vi.fn().mockResolvedValue({
+  createTypstHighlighting: vi.fn().mockResolvedValue({
     extension: { kind: "shiki" },
-    getTheme: vi.fn(),
+    theme: "dark",
+    setTheme: vi.fn(),
     highlightCode: vi.fn(),
   }),
 }));
@@ -17,62 +17,107 @@ vi.mock("../diagnostics-plugin.js", () => ({
   createTypstDiagnostics: vi.fn(() => ({ kind: "diagnostics" })),
 }));
 
+vi.mock("../hover.js", () => ({
+  createTypstHover: vi.fn(() => ({ kind: "hover" })),
+}));
+
 import { createTypstCompileSync } from "../compile-sync.js";
 import { createTypstDiagnostics } from "../diagnostics-plugin.js";
+import { createTypstHover as createTypstHoverImpl } from "../hover.js";
 import {
-  createTypstExtensions,
+  createTypstEditor,
   createTypstHover,
   editorSync,
   externalSync,
   typstCompletionSource,
 } from "../index.js";
+import { createTypstHighlighting } from "../shiki.js";
 
-function mockProject() {
-  return { hasAnalyzer: false };
+function mockProject(hasAnalyzer = false) {
+  return { hasAnalyzer };
 }
 
-describe("createTypstExtensions sync mode", () => {
+describe("createTypstEditor sync mode", () => {
   it("includes compile sync in editor sync mode", async () => {
     const project = mockProject();
-    const extensions = await createTypstExtensions({
+    const editor = await createTypstEditor({
       project: project as any,
       sync: editorSync(),
     });
 
     expect(createTypstCompileSync).toHaveBeenCalledWith({ project });
     expect(createTypstDiagnostics).toHaveBeenCalledWith({ project });
-    expect(extensions).toContainEqual({ kind: "compile-sync" });
-    expect(extensions).toContainEqual({ kind: "diagnostics" });
+    expect(editor.extension).toContainEqual({ kind: "compile-sync" });
+    expect(editor.extension).toContainEqual({ kind: "diagnostics" });
   });
 
   it("omits compile sync in external sync mode while keeping diagnostics", async () => {
     vi.mocked(createTypstCompileSync).mockClear();
     vi.mocked(createTypstDiagnostics).mockClear();
     const project = mockProject();
-    const extensions = await createTypstExtensions({
+    const editor = await createTypstEditor({
       project: project as any,
       sync: externalSync(),
     });
 
     expect(createTypstCompileSync).not.toHaveBeenCalled();
     expect(createTypstDiagnostics).toHaveBeenCalledWith({ project });
-    expect(extensions).not.toContainEqual({ kind: "compile-sync" });
-    expect(extensions).toContainEqual({ kind: "diagnostics" });
+    expect(editor.extension).not.toContainEqual({ kind: "compile-sync" });
+    expect(editor.extension).toContainEqual({ kind: "diagnostics" });
   });
 
   it("accepts structural external sync handles", async () => {
     vi.mocked(createTypstCompileSync).mockClear();
     vi.mocked(createTypstDiagnostics).mockClear();
     const project = mockProject();
-    const extensions = await createTypstExtensions({
+    const editor = await createTypstEditor({
       project: project as any,
       sync: { kind: "external", ready: Promise.resolve() },
     });
 
     expect(createTypstCompileSync).not.toHaveBeenCalled();
     expect(createTypstDiagnostics).toHaveBeenCalledWith({ project });
-    expect(extensions).not.toContainEqual({ kind: "compile-sync" });
-    expect(extensions).toContainEqual({ kind: "diagnostics" });
+    expect(editor.extension).not.toContainEqual({ kind: "compile-sync" });
+    expect(editor.extension).toContainEqual({ kind: "diagnostics" });
+  });
+
+  it("disables highlighting and hover code highlighting with highlighting false", async () => {
+    vi.mocked(createTypstHighlighting).mockClear();
+    vi.mocked(createTypstHoverImpl).mockClear();
+    const project = mockProject(true);
+    const editor = await createTypstEditor({
+      project: project as any,
+      sync: editorSync(),
+      highlighting: false,
+    });
+
+    expect(createTypstHighlighting).not.toHaveBeenCalled();
+    expect(editor.highlighting).toBeUndefined();
+    expect(editor.extension).not.toContainEqual({ kind: "shiki" });
+    expect(createTypstHoverImpl).toHaveBeenCalledWith({
+      project,
+      highlightCode: undefined,
+    });
+  });
+
+  it("reuses an existing highlighting controller", async () => {
+    vi.mocked(createTypstHighlighting).mockClear();
+    const project = mockProject();
+    const highlighting = {
+      extension: { kind: "custom-shiki" },
+      theme: "light",
+      setTheme: vi.fn(),
+      highlightCode: vi.fn(),
+    };
+    const editor = await createTypstEditor({
+      project: project as any,
+      sync: editorSync(),
+      highlighting: highlighting as any,
+    });
+
+    expect(createTypstHighlighting).not.toHaveBeenCalled();
+    expect(editor.highlighting).toBe(highlighting);
+    expect(editor.extension).toContain(highlighting.extension);
   });
 });
 
